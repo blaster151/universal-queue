@@ -1,0 +1,7 @@
+This should be both a React frontend web app AND a Chrome extension, all Typescript, and there should be a place where common code (interfaces or implementation code) can coexist and be available both in the Chrome extension's content script, service worker, or the React frontend.
+
+I want it to be a Universal Queue of movies and TV show episodes, across multiple streaming services. For now its storage can be in the extension's localStorage, although in the future its storage could move somewhere else. Simplest functionality would be to allow adding a movie or TV episode by URL. Would like if we can grab what info we can from that URL (calling upon the Chrome extension's background script) and add it to our watchlist, which is rendered visually and supports drag and drop based reordering.
+
+Eventually I'd like the Chrome extension to not just be active on our React frontend, but on services like Netflix and Youtube and DisneyPlus and PrimeVideo I'd like it to add a custom "+" button on the top corner of things it identifies as movies or episodes - and things can be added to our wishlist that way as well.
+
+As for playback - if Play is invoked on an item in the queue, it should open in a new tab - here's the important part, for each streaming service we want a bulletproof and probably customizable way to detect when a video is "complete" (and rather than let that service continue on to what it thinks should be "next", we ask our queue what should be next and we start viewing that instead.)
