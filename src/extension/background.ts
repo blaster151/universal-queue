@@ -1,4 +1,4 @@
-import { QueueItem, ServiceConfig } from '@/common/types';
+import { ServiceConfig } from '@/common/types';
 import { StorageService } from '@/common/storage';
 
 const serviceConfigs: Record<string, ServiceConfig> = {
@@ -49,7 +49,7 @@ const serviceConfigs: Record<string, ServiceConfig> = {
 };
 
 // Listen for messages from content scripts
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((message, sender) => {
   if (message.type === 'VIDEO_COMPLETED') {
     handleVideoCompletion(sender.tab?.id, sender.tab?.url);
   }

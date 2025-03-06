@@ -24,6 +24,8 @@ export interface ServiceConfig {
     type: 'time' | 'event' | 'url';
     value: string;
   };
+  isSeries?: () => boolean;
+  getSeriesData?: () => Promise<QueueItem[]>;
 }
 
 export interface QueueState {

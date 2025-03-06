@@ -113,6 +113,9 @@ function App() {
           )}
         </Droppable>
       </DragDropContext>
+      <div className="universal-queue-powered-by">
+        Powered by <a href="https://github.com/yourusername/universal-queue" target="_blank" rel="noopener noreferrer">Universal Queue</a>
+      </div>
     </div>
   );
 }

@@ -1,4 +1,3 @@
-import { DragDropContext, Droppable, Draggable } from 'react-beautiful-dnd';
 import { QueueItem } from '@/common/types';
 import { StorageService } from '@/common/storage';
 
@@ -61,7 +60,7 @@ function renderQueue(items: QueueItem[]) {
   const queueItems = queueList.querySelectorAll('.queue-item');
 
   queueItems.forEach(item => {
-    item.addEventListener('dragstart', (e) => {
+    item.addEventListener('dragstart', () => {
       draggedItem = item as HTMLElement;
       item.classList.add('dragging');
     });
@@ -89,7 +88,7 @@ function renderQueue(items: QueueItem[]) {
 
   // Save new order when drag ends
   queueList.addEventListener('dragend', async () => {
-    const newItems = Array.from(queueList.querySelectorAll('.queue-item')).map((item, index) => {
+    const newItems = Array.from(queueList.querySelectorAll('.queue-item')).map((item) => {
       const originalIndex = parseInt(item.getAttribute('data-index') || '0');
       return items[originalIndex];
     });

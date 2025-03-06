@@ -26,7 +26,7 @@ export class StorageService {
       return data ? JSON.parse(data) : { items: [], lastUpdated: Date.now() };
     } else {
       return new Promise((resolve) => {
-        this.storage.get(STORAGE_KEY, (result) => {
+        this.storage.get(STORAGE_KEY, (result: { [key: string]: QueueState }) => {
           resolve(result[STORAGE_KEY] || { items: [], lastUpdated: Date.now() });
         });
       });
