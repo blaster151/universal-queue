@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "outDir": "extension/dist",
+    "sourceMap": true,
+    "declaration": true,
+    "jsx": "react",
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  },
+  "include": [
+    "src/extension/**/*.ts",
+    "src/extension/**/*.tsx",
+    "src/common/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "src/web/**/*"
+  ]
+} 
