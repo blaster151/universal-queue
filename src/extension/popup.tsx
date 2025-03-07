@@ -6,16 +6,6 @@ import ReactDOM from 'react-dom';
 
 const storage = StorageService.getInstance();
 
-const COMMON_EPISODE_PATTERNS = {
-  // Add role-based patterns
-  container: [
-    '[role="button"][aria-label*="Episode"]',
-    '[role="listitem"][aria-label*="Episode"]',
-    // Keep existing patterns too
-    '[class*="episode"]'
-  ]
-};
-
 function QueueApp() {
   const [items, setItems] = React.useState<QueueItem[]>([]);
 

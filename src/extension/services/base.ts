@@ -64,8 +64,8 @@ export abstract class BaseStreamingService {
     return undefined;
   }
 
-  protected isEpisodeWatched(progressElement: Element): boolean {
-    // Override this in child classes if needed
+  protected isEpisodeWatched(_progressElement: Element): boolean {
+    // Default implementation - override in specific service classes if needed
     return false;
   }
 } 
