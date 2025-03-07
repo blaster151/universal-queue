@@ -56,6 +56,7 @@ async function buildExtension() {
       resolve(__dirname, '../src/extension/popup.html'),
       resolve(extensionDir, 'popup.html')
     );
+    console.log('Popup HTML copied successfully');
 
     // Build background script
     await build({

@@ -5,7 +5,7 @@ class ContentManager {
   private uiElements: Set<HTMLElement> = new Set();
   private currentUrl: string;
   private initTimeout: number | null = null;
-  private styleElement: HTMLStyleElement | null = null;
+  private styleSheet: CSSStyleSheet | null = null;
   private originalPushState: typeof history.pushState;
   private originalReplaceState: typeof history.replaceState;
   private configs: Record<string, ServiceConfig>;
@@ -22,54 +22,93 @@ class ContentManager {
     this.init().catch(this.handleError);
   }
 
-  private readonly STYLES = `
-    .universal-queue-add-button {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      background: #646cff;
-      color: white;
-      border: none;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 20px;
-      z-index: 9999;
-      transition: background-color 0.2s;
+  private readonly STYLES = [
+    {
+      selector: '.universal-queue-add-button',
+      rules: {
+        position: 'absolute',
+        top: '10px',
+        right: '10px',
+        width: '32px',
+        height: '32px',
+        borderRadius: '50%',
+        background: '#646cff',
+        color: 'white',
+        border: 'none',
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '20px',
+        zIndex: '9999',
+        transition: 'background-color 0.2s'
+      }
+    },
+    {
+      selector: '.universal-queue-add-button:hover',
+      rules: {
+        background: '#535bf2'
+      }
+    },
+    {
+      selector: '.universal-queue-series-button',
+      rules: {
+        position: 'fixed',
+        top: '20px',
+        right: '20px',
+        background: '#646cff',
+        color: 'white',
+        border: 'none',
+        borderRadius: '20px',
+        padding: '8px 16px',
+        fontSize: '14px',
+        cursor: 'pointer',
+        zIndex: '9999',
+        transition: 'background-color 0.2s',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px'
+      }
+    },
+    {
+      selector: '.universal-queue-series-button:hover',
+      rules: {
+        background: '#535bf2'
+      }
     }
-    .universal-queue-add-button:hover {
-      background: #535bf2;
-    }
-    .universal-queue-series-button {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background: #646cff;
-      color: white;
-      border: none;
-      border-radius: 20px;
-      padding: 8px 16px;
-      font-size: 14px;
-      cursor: pointer;
-      z-index: 9999;
-      transition: background-color 0.2s;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .universal-queue-series-button:hover {
-      background: #535bf2;
-    }
-  `;
+  ];
 
   private setupStyles(): void {
-    this.styleElement = document.createElement('style');
-    this.styleElement.textContent = this.STYLES;
-    document.head.appendChild(this.styleElement);
+    try {
+      // Create a new style sheet
+      const sheet = new CSSStyleSheet();
+      
+      // Add rules to the stylesheet
+      this.STYLES.forEach(style => {
+        const rules = Object.entries(style.rules)
+          .map(([prop, value]) => `${prop.replace(/[A-Z]/g, m => `-${m.toLowerCase()}`)}:${value}`)
+          .join(';');
+        sheet.insertRule(`${style.selector}{${rules}}`, sheet.cssRules.length);
+      });
+
+      // Apply the stylesheet to the document
+      (document as any).adoptedStyleSheets = [...(document as any).adoptedStyleSheets, sheet];
+      this.styleSheet = sheet;
+    } catch (error) {
+      console.error('Failed to setup styles:', error);
+      // Fallback to traditional style element if Constructable Stylesheets not supported
+      const style = document.createElement('style');
+      const cssText = this.STYLES.map(style => {
+        const rules = Object.entries(style.rules)
+          .map(([prop, value]) => `${prop.replace(/[A-Z]/g, m => `-${m.toLowerCase()}`)}:${value}`)
+          .join(';');
+        return `${style.selector}{${rules}}`;
+      }).join('\n');
+      
+      style.textContent = cssText;
+      document.head.appendChild(style);
+      this.styleSheet = null;
+    }
   }
 
   private setupHistoryListeners(): void {
@@ -205,7 +244,7 @@ class ContentManager {
     }
   }
 
-  private async init(delay = 1000): Promise<void> {
+  public async init(delay = 1000): Promise<void> {
     if (this.disposed) return;
 
     if (this.initTimeout) {
@@ -273,7 +312,10 @@ class ContentManager {
     history.replaceState = this.originalReplaceState;
     
     // Remove styles
-    this.styleElement?.remove();
+    if (this.styleSheet && (document as any).adoptedStyleSheets) {
+      (document as any).adoptedStyleSheets = (document as any).adoptedStyleSheets
+        .filter((sheet: CSSStyleSheet) => sheet !== this.styleSheet);
+    }
     
     // Remove event listeners
     window.removeEventListener('popstate', this.handleUrlChange);
@@ -305,4 +347,11 @@ const contentManager = new ContentManager(serviceConfigs);
 // Cleanup on extension unload
 window.addEventListener('unload', () => {
   contentManager.dispose();
-}); 
+});
+
+// Initialize immediately with a delay to allow page to load
+setTimeout(() => {
+  contentManager.init().catch(error => {
+    console.error('Failed to initialize content script:', error);
+  });
+}, 2000); 
