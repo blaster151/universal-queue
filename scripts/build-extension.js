@@ -33,29 +33,35 @@ async function buildExtension() {
       },
     });
 
-    // Build popup
-    await build({
-      root: '.',
-      build: {
-        outDir: extensionDir,
-        rollupOptions: {
-          input: {
-            popup: resolve(__dirname, '../src/extension/popup.tsx'),
-          },
-          output: {
-            entryFileNames: '[name].js',
-            chunkFileNames: '[name].js',
-            assetFileNames: '[name].[ext]',
-          },
-        },
-      },
+    // Build popup with esbuild
+    const popupSource = resolve(__dirname, '../src/extension/popup.tsx');
+    const popupDest = resolve(extensionDir, 'popup.js');
+
+    await esbuild.build({
+      entryPoints: [popupSource],
+      bundle: true,
+      outfile: popupDest,
+      format: 'iife',
+      target: 'es2020',
+      platform: 'browser'
     });
 
     // Copy popup HTML
-    fs.copyFileSync(
-      resolve(__dirname, '../src/extension/popup.html'),
-      resolve(extensionDir, 'popup.html')
-    );
+    const popupHtmlSource = resolve(__dirname, '../src/extension/popup.html');
+    const popupHtmlDest = resolve(extensionDir, 'popup.html');
+    
+    console.log('Popup HTML source:', popupHtmlSource);
+    console.log('Popup HTML destination:', popupHtmlDest);
+    
+    if (!fs.existsSync(popupHtmlSource)) {
+      throw new Error(`Popup HTML file not found at ${popupHtmlSource}`);
+    }
+    
+    fs.copyFileSync(popupHtmlSource, popupHtmlDest);
+    
+    if (!fs.existsSync(popupHtmlDest)) {
+      throw new Error('Popup HTML file was not copied successfully');
+    }
     console.log('Popup HTML copied successfully');
 
     // Build background script
@@ -88,7 +94,7 @@ async function buildExtension() {
       entryPoints: [contentScriptSource],
       bundle: true,
       outfile: contentScriptDest,
-      format: 'esm',
+      format: 'iife',
       target: 'es2020',
       platform: 'browser'
     });

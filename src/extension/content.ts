@@ -12,6 +12,7 @@ class ContentManager {
   private disposed = false;
 
   constructor(configs: Record<string, ServiceConfig>) {
+    console.log('ContentManager initializing...');
     this.configs = configs;
     this.currentUrl = window.location.href;
     this.originalPushState = history.pushState;
@@ -217,16 +218,34 @@ class ContentManager {
 
   private async extractContent(config: ServiceConfig): Promise<QueueItem | QueueItem[] | null> {
     try {
+      console.log('Extracting content with config:', {
+        name: config.name,
+        titleSelector: config.titleSelector,
+        thumbnailSelector: config.thumbnailSelector,
+        isSeries: config.isSeries?.()
+      });
+
       if (config.isSeries?.()) {
-        return await config.getSeriesData?.() || null;
+        console.log('Detected series, getting series data...');
+        const seriesData = await config.getSeriesData?.();
+        console.log('Series data:', seriesData);
+        return seriesData || null;
       }
 
       const titleElement = document.querySelector(config.titleSelector);
+      console.log('Title element found:', titleElement?.textContent);
+      
       const thumbnailElement = config.thumbnailSelector ? 
         document.querySelector(config.thumbnailSelector) as HTMLImageElement : 
         null;
+      console.log('Thumbnail element found:', thumbnailElement?.src);
       
-      if (!titleElement) return null;
+      if (!titleElement) {
+        console.log('No title element found with selector:', config.titleSelector);
+        console.log('Available elements matching similar patterns:', 
+          document.querySelectorAll('[data-uia*="title"]'));
+        return null;
+      }
 
       return {
         id: Date.now().toString(),
@@ -244,10 +263,15 @@ class ContentManager {
     }
   }
 
-  public async init(delay = 1000): Promise<void> {
-    if (this.disposed) return;
+  public async init(delay = 5000): Promise<void> {
+    console.log('Initializing content script with delay:', delay);
+    if (this.disposed) {
+      console.log('Manager is disposed, skipping initialization');
+      return;
+    }
 
     if (this.initTimeout) {
+      console.log('Clearing existing timeout');
       window.clearTimeout(this.initTimeout);
     }
 
@@ -255,31 +279,46 @@ class ContentManager {
       this.initTimeout = window.setTimeout(async () => {
         try {
           const url = window.location.href;
+          console.log('Current URL:', url);
+          
           const service = Object.entries(this.configs).find(([domain]) => 
             url.includes(domain)
           );
 
           if (!service) {
-            console.log('DEBUG: No service config found for this domain');
+            console.log('No service config found for this domain');
             return;
           }
+          console.log('Found service config for:', service[0]);
 
           this.cleanup();
 
           const config = service[1];
+          console.log('Extracting content with config:', config.name);
           const items = await this.extractContent(config);
           
-          if (!items || this.disposed) return;
+          if (!items) {
+            console.log('No items found on page');
+            return;
+          }
+          if (this.disposed) {
+            console.log('Manager disposed during content extraction');
+            return;
+          }
 
           const itemsArray = Array.isArray(items) ? items : [items];
+          console.log('Found items:', itemsArray.length);
           
           if (config.isSeries?.()) {
+            console.log('Creating series button');
             const seriesButton = this.createSeriesButton(itemsArray);
             document.body.appendChild(seriesButton);
           }
           
           itemsArray.forEach(item => {
+            console.log('Looking for video elements for item:', item.title);
             const videoElements = document.querySelectorAll('video');
+            console.log('Found video elements:', videoElements.length);
             videoElements.forEach(video => {
               const container = video.parentElement;
               if (!container || this.disposed) return;
@@ -287,9 +326,11 @@ class ContentManager {
               const button = this.createAddButton(item);
               container.style.position = 'relative';
               container.appendChild(button);
+              console.log('Added button to video container');
             });
           });
         } catch (error) {
+          console.error('Error during initialization:', error);
           this.handleError(error);
         } finally {
           resolve();
@@ -354,4 +395,4 @@ setTimeout(() => {
   contentManager.init().catch(error => {
     console.error('Failed to initialize content script:', error);
   });
-}, 2000); 
+}, 5000); 
