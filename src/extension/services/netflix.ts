@@ -16,17 +16,17 @@ export class NetflixService extends BaseStreamingService {
         '.titleCardList--container:has([data-uia="episode-title"])'
       ].join(', '),
       expandButton: [
-        // Various expand buttons Netflix uses
+        // Netflix's section divider expand button
+        'button[data-uia="section-expand"]',
+        'button[aria-label="expand section"]',
+        '.section-divider button',
+        // Fallback selectors
+        'button[class*="section-expandButton"]',
+        'button[class*="expandButton"]',
+        // Legacy selectors
         '[data-uia="expand-episodes"]',
         'button[aria-label*="episodes"]',
-        'button[aria-label*="Episodes"]',
-        '[role="button"][aria-label*="episodes"]',
-        '[role="button"][aria-label*="Episodes"]',
-        // Additional episode list buttons
-        'button[aria-label*="See more"]',
-        'button[aria-label*="Show all"]',
-        '[role="button"][aria-label*="See more"]',
-        '[role="button"][aria-label*="Show all"]'
+        'button[aria-label*="Episodes"]'
       ].join(', '),
       seriesIndicators: [
         // Various ways to detect if it's a series
@@ -114,6 +114,12 @@ export class NetflixService extends BaseStreamingService {
         'progress.titleCard-progress',
         '.progress-bar',
         '.episode-progress'
+      ].join(', '),
+      showMoreButton: [
+        '[data-uia="expand-to-show-more"]',
+        'button[aria-label*="Show More"]',
+        'button[class*="showMore"]',
+        'button.episodeSelector-season-trigger'
       ].join(', ')
     }
   };
@@ -171,58 +177,37 @@ export class NetflixService extends BaseStreamingService {
   private async expandEpisodeList(): Promise<void> {
     console.log('NetflixService: Attempting to expand episode list');
     
-    // Try to scroll to trigger lazy loading
-    window.scrollTo(0, document.body.scrollHeight);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
+    // Try to find the section divider button
     const expandButton = document.querySelector(this.SELECTORS.series.expandButton);
     if (expandButton instanceof HTMLElement) {
-      console.log('NetflixService: Found expand button, clicking');
-      expandButton.click();
+      console.log('NetflixService: Found expand button:', expandButton.className);
       
-      // Wait for episodes to load with increasing timeouts
-      for (let i = 0; i < 3; i++) {
-        await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
-        const episodes = document.querySelectorAll(this.SELECTORS.series.episodeItem);
-        if (episodes.length > 0) {
-          console.log('NetflixService: Episodes loaded after clicking expand');
-          return;
+      // Check if the section is already expanded
+      const isCollapsed = expandButton.closest('.section-divider')?.classList.contains('collapsed');
+      if (isCollapsed) {
+        console.log('NetflixService: Section is collapsed, clicking expand button');
+        expandButton.click();
+        
+        // Wait for episodes to load with increasing timeouts
+        for (let i = 0; i < 3; i++) {
+          await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+          const episodes = document.querySelectorAll(this.SELECTORS.series.episodeItem);
+          if (episodes.length > 10) { // We expect more than the initial 10 episodes
+            console.log('NetflixService: Additional episodes loaded:', episodes.length);
+            return;
+          }
         }
+        console.log('NetflixService: No additional episodes found after expanding');
+      } else {
+        console.log('NetflixService: Section is already expanded');
       }
-      console.log('NetflixService: No episodes found after expanding');
     } else {
-      console.log('NetflixService: No expand button found, trying to find episodes directly');
-      // Sometimes episodes are already visible without needing to expand
-      const episodes = document.querySelectorAll(this.SELECTORS.series.episodeItem);
-      if (episodes.length > 0) {
-        console.log('NetflixService: Found episodes without expanding');
-        return;
-      }
+      console.log('NetflixService: No expand button found');
     }
-  }
 
-  private isValidEpisodeElement(element: Element): boolean {
-    // Check if the element has enough episode-specific content
-    const hasTitle = element.querySelector(this.SELECTORS.series.episodeTitle)?.textContent?.trim();
-    const hasImage = element.querySelector('img');
-    const hasEpisodeNumber = element.querySelector(this.SELECTORS.series.episodeNumber) || 
-                           element.getAttribute('aria-label')?.match(/Episode \d+/i) ||
-                           element.querySelector('button[aria-label*="Episode"], a[aria-label*="Episode"]');
-    const hasPlayButton = element.querySelector('button[aria-label*="Play"]');
-    
-    // Log what we found for debugging
-    console.log('NetflixService: Validating episode element:', {
-      element: element.className,
-      hasTitle,
-      hasImage: !!hasImage,
-      hasEpisodeNumber: !!hasEpisodeNumber,
-      hasPlayButton: !!hasPlayButton,
-      ariaLabel: element.getAttribute('aria-label')
-    });
-
-    // Element must have at least 2 of these characteristics to be considered valid
-    const validityScore = [hasTitle, hasImage, hasEpisodeNumber, hasPlayButton].filter(Boolean).length;
-    return validityScore >= 2;
+    // Check if we have episodes even without expanding
+    const episodes = document.querySelectorAll(this.SELECTORS.series.episodeItem);
+    console.log('NetflixService: Found episodes without expanding:', episodes.length);
   }
 
   private getEpisodeInfo(episode: Element): { number: number; title: string | undefined; thumbnail: string | undefined } {
@@ -347,36 +332,56 @@ export class NetflixService extends BaseStreamingService {
   }
 
   private async findEpisodes(): Promise<Element[]> {
-    console.log('NetflixService: Looking for episodes');
+    console.log('NetflixService: Finding episodes');
     
-    // Try different episode list containers
+    // Try to find and click "Show More" button first
+    const showMoreButton = document.querySelector(this.SELECTORS.series.showMoreButton) as HTMLButtonElement;
+    if (showMoreButton) {
+      console.log('NetflixService: Found Show More button, clicking it');
+      showMoreButton.click();
+      // Wait for new episodes to load
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    // Find all episode elements
     const containers = [
-      '[data-uia="episode-list"]',
-      '.episode-list',
-      '.episodeSelector',
-      '.titleCardList--container'
+      // Primary episode containers
+      '.episodeSelector-episodes-container',
+      '.episode-container',
+      // Fallback containers
+      '[id*="episode-list"]',
+      '[class*="episodeList"]'
     ];
 
     for (const container of containers) {
-      const listElement = document.querySelector(container);
-      if (listElement) {
-        console.log('NetflixService: Found episode container:', container);
-        const episodes = Array.from(listElement.querySelectorAll(this.SELECTORS.series.episodeItem))
-          .filter(episode => this.isValidEpisodeElement(episode));
-        
+      const episodeContainer = document.querySelector(container);
+      if (episodeContainer) {
+        // Find all episode elements within the container
+        const episodes = Array.from(episodeContainer.querySelectorAll('.titleCardList--container'));
         if (episodes.length > 0) {
-          console.log('NetflixService: Found valid episodes in container:', container);
+          console.log('NetflixService: Found episodes:', episodes.length);
           return episodes;
         }
       }
     }
 
-    // If no container found, try finding episodes directly
-    const allEpisodes = Array.from(document.querySelectorAll(this.SELECTORS.series.episodeItem))
-      .filter(episode => this.isValidEpisodeElement(episode));
-    
-    console.log('NetflixService: Found episodes directly:', allEpisodes.length);
-    return allEpisodes;
+    // If no episodes found in containers, try direct episode selectors
+    const directSelectors = [
+      '.titleCardList--container',
+      '[data-uia*="episode"]',
+      '[class*="episode-item"]'
+    ];
+
+    for (const selector of directSelectors) {
+      const episodes = Array.from(document.querySelectorAll(selector));
+      if (episodes.length > 0) {
+        console.log('NetflixService: Found episodes using direct selector:', episodes.length);
+        return episodes;
+      }
+    }
+
+    console.log('NetflixService: No episodes found');
+    return [];
   }
 
   public getConfig(): ServiceConfig {
@@ -421,6 +426,9 @@ export class NetflixService extends BaseStreamingService {
         // Try to expand episode list first
         await this.expandEpisodeList();
         
+        // Wait a bit longer after expansion to ensure all episodes are loaded
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
         // Get series metadata
         const seriesTitle = this.getSeriesTitle();
         const seriesThumbnail = document.querySelector(this.SELECTORS.series.thumbnail)?.getAttribute('src') || '';
@@ -431,11 +439,10 @@ export class NetflixService extends BaseStreamingService {
 
         // Find valid episodes
         const episodes = await this.findEpisodes();
-        console.log('NetflixService: Found valid episodes:', episodes.length);
+        console.log('NetflixService: Found', episodes.length, 'episodes');
         
         if (episodes.length === 0) {
-          console.log('NetflixService: No valid episodes found');
-          return null;
+          throw new Error('No episodes found');
         }
 
         const episodesData = episodes.map((episode, index) => {

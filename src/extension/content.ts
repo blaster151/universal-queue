@@ -1,425 +1,4 @@
 import { ServiceConfig, QueueItem } from '@/common/types';
-import { StorageService } from '@/common/storage';
-
-class ContentManager {
-  private uiElements: Set<HTMLElement> = new Set();
-  private currentUrl: string;
-  private initTimeout: number | null = null;
-  private styleSheet: CSSStyleSheet | null = null;
-  public originalPushState: typeof history.pushState;
-  public originalReplaceState: typeof history.replaceState;
-  private configs: Record<string, ServiceConfig>;
-  private disposed = false;
-
-  constructor(configs: Record<string, ServiceConfig>) {
-    console.log('ContentManager initializing...');
-    this.configs = configs;
-    this.currentUrl = window.location.href;
-    this.originalPushState = history.pushState;
-    this.originalReplaceState = history.replaceState;
-    
-    this.setupStyles();
-    this.setupHistoryListeners();
-    this.init().catch(this.handleError);
-  }
-
-  private readonly STYLES = [
-    {
-      selector: '.universal-queue-add-button',
-      rules: {
-        position: 'absolute',
-        top: '10px',
-        right: '10px',
-        width: '32px',
-        height: '32px',
-        borderRadius: '50%',
-        background: '#646cff',
-        color: 'white',
-        border: 'none',
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        fontSize: '20px',
-        zIndex: '9999',
-        transition: 'background-color 0.2s'
-      }
-    },
-    {
-      selector: '.universal-queue-add-button:hover',
-      rules: {
-        background: '#535bf2'
-      }
-    },
-    {
-      selector: '.universal-queue-series-button',
-      rules: {
-        position: 'fixed',
-        top: '20px',
-        right: '20px',
-        background: '#646cff',
-        color: 'white',
-        border: 'none',
-        borderRadius: '20px',
-        padding: '8px 16px',
-        fontSize: '14px',
-        cursor: 'pointer',
-        zIndex: '9999',
-        transition: 'background-color 0.2s',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px'
-      }
-    },
-    {
-      selector: '.universal-queue-series-button:hover',
-      rules: {
-        background: '#535bf2'
-      }
-    }
-  ];
-
-  private setupStyles(): void {
-    try {
-      // Create a new style sheet
-      const sheet = new CSSStyleSheet();
-      
-      // Add rules to the stylesheet
-      this.STYLES.forEach(style => {
-        const rules = Object.entries(style.rules)
-          .map(([prop, value]) => `${prop.replace(/[A-Z]/g, m => `-${m.toLowerCase()}`)}:${value}`)
-          .join(';');
-        sheet.insertRule(`${style.selector}{${rules}}`, sheet.cssRules.length);
-      });
-
-      // Apply the stylesheet to the document
-      (document as any).adoptedStyleSheets = [...(document as any).adoptedStyleSheets, sheet];
-      this.styleSheet = sheet;
-    } catch (error) {
-      console.error('Failed to setup styles:', error);
-      // Fallback to traditional style element if Constructable Stylesheets not supported
-      const style = document.createElement('style');
-      const cssText = this.STYLES.map(style => {
-        const rules = Object.entries(style.rules)
-          .map(([prop, value]) => `${prop.replace(/[A-Z]/g, m => `-${m.toLowerCase()}`)}:${value}`)
-          .join(';');
-        return `${style.selector}{${rules}}`;
-      }).join('\n');
-      
-      style.textContent = cssText;
-      document.head.appendChild(style);
-      this.styleSheet = null;
-    }
-  }
-
-  private setupHistoryListeners(): void {
-    history.pushState = (...args: Parameters<typeof history.pushState>) => {
-      this.originalPushState.apply(history, args);
-      this.handleUrlChange();
-    };
-
-    history.replaceState = (...args: Parameters<typeof history.replaceState>) => {
-      this.originalReplaceState.apply(history, args);
-      this.handleUrlChange();
-    };
-
-    window.addEventListener('popstate', this.handleUrlChange.bind(this));
-  }
-
-  private handleUrlChange = (): void => {
-    const newUrl = window.location.href;
-    if (newUrl !== this.currentUrl) {
-      this.currentUrl = newUrl;
-      this.init().catch(this.handleError);
-    }
-  };
-
-  private createAddButton(item: QueueItem): HTMLButtonElement {
-    const button = document.createElement('button');
-    button.className = 'universal-queue-add-button';
-    button.innerHTML = '+';
-    button.title = 'Add to Universal Queue';
-    
-    button.addEventListener('click', async () => {
-      try {
-        const storage = StorageService.getInstance();
-        await storage.addItem(item);
-        this.showSuccess(button);
-      } catch (error) {
-        this.handleError(error as Error);
-        this.showError(button);
-      }
-    });
-
-    this.uiElements.add(button);
-    return button;
-  }
-
-  private createEpisodeButton(episode: QueueItem): HTMLButtonElement {
-    const button = document.createElement('button');
-    button.className = 'universal-queue-episode-button';
-    button.textContent = 'Add to Queue';
-    button.style.cssText = `
-      position: absolute;
-      right: 8px;
-      top: 50%;
-      transform: translateY(-50%);
-      padding: 4px 8px;
-      background: #e50914;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      font-size: 12px;
-      z-index: 1000;
-      transition: background-color 0.2s;
-    `;
-    
-    button.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.addToQueue(episode, button);
-    });
-    
-    return button;
-  }
-
-  private createSeriesButton(episodes: QueueItem[]): HTMLButtonElement {
-    const button = document.createElement('button');
-    button.className = 'universal-queue-series-button';
-    button.textContent = 'Add All Episodes';
-    button.style.cssText = `
-      position: fixed;
-      right: 20px;
-      bottom: 20px;
-      padding: 8px 16px;
-      background: #e50914;
-      color: white;
-      border: none;
-      border-radius: 4px;
-      cursor: pointer;
-      z-index: 1000;
-      transition: background-color 0.2s;
-    `;
-    
-    button.addEventListener('click', () => {
-      episodes.forEach(episode => this.addToQueue(episode, button));
-    });
-    
-    return button;
-  }
-
-  private addEpisodeButtons(episodes: QueueItem[]): void {
-    const episodeItems = document.querySelectorAll('.titleCardList--container.episode-item');
-    episodeItems.forEach((item, index) => {
-      const episode = episodes[index];
-      if (episode) {
-        const button = this.createEpisodeButton(episode);
-        item.appendChild(button);
-      }
-    });
-  }
-
-  private showSuccess(element: HTMLElement, text?: string): void {
-    if (this.disposed) return;
-    
-    const originalBackground = element.style.background;
-    const originalContent = element.innerHTML;
-
-    element.style.background = '#4CAF50';
-    element.innerHTML = text || '✓';
-
-    setTimeout(() => {
-      if (!this.disposed) {
-        element.style.background = originalBackground;
-        element.innerHTML = originalContent;
-      }
-    }, 2000);
-  }
-
-  private showError(element: HTMLElement): void {
-    element.style.background = '#dc3545';
-    element.innerHTML = '!';
-    element.title = 'Failed to add to queue. Please try again.';
-  }
-
-  private cleanup(): void {
-    if (this.initTimeout) {
-      window.clearTimeout(this.initTimeout);
-      this.initTimeout = null;
-    }
-
-    this.uiElements.forEach(element => {
-      try {
-        element.remove();
-      } catch (error) {
-        console.error('Error removing element:', error);
-      }
-    });
-    this.uiElements.clear();
-  }
-
-  private async extractContent(config: ServiceConfig): Promise<QueueItem | QueueItem[] | null> {
-    try {
-      console.log('Extracting content with config:', {
-        name: config.name,
-        titleSelector: config.titleSelector,
-        thumbnailSelector: config.thumbnailSelector,
-        isSeries: config.isSeries?.()
-      });
-
-      if (config.isSeries?.()) {
-        console.log('Detected series, getting series data...');
-        const seriesData = await config.getSeriesData?.();
-        console.log('Series data:', seriesData);
-        if (seriesData) {
-          // Return the episodes array for backward compatibility
-          return seriesData.episodes;
-        }
-        return null;
-      }
-
-      const titleElement = document.querySelector(config.titleSelector);
-      console.log('Title element found:', titleElement?.textContent);
-      
-      const thumbnailElement = config.thumbnailSelector ? 
-        document.querySelector(config.thumbnailSelector) as HTMLImageElement : 
-        null;
-      console.log('Thumbnail element found:', thumbnailElement?.src);
-      
-      if (!titleElement) {
-        console.log('No title element found with selector:', config.titleSelector);
-        console.log('Available elements matching similar patterns:', 
-          document.querySelectorAll('[data-uia*="title"]'));
-        return null;
-      }
-
-      return {
-        id: Date.now().toString(),
-        title: titleElement.textContent?.trim() || '',
-        type: 'movie',
-        url: window.location.href,
-        service: config.name,
-        thumbnailUrl: thumbnailElement?.src || '',
-        addedAt: Date.now(),
-        order: 0
-      };
-    } catch (error) {
-      this.handleError(error as Error);
-      return null;
-    }
-  }
-
-  public async init(delay = 5000): Promise<void> {
-    console.log('Initializing content script with delay:', delay);
-    if (this.disposed) {
-      console.log('Manager is disposed, skipping initialization');
-      return;
-    }
-
-    if (this.initTimeout) {
-      console.log('Clearing existing timeout');
-      window.clearTimeout(this.initTimeout);
-    }
-
-    return new Promise((resolve) => {
-      this.initTimeout = window.setTimeout(async () => {
-        try {
-          const url = window.location.href;
-          console.log('Current URL:', url);
-          
-          const service = Object.entries(this.configs).find(([domain]) => 
-            url.includes(domain)
-          );
-
-          if (!service) {
-            console.log('No service config found for this domain');
-            return;
-          }
-          console.log('Found service config for:', service[0]);
-
-          this.cleanup();
-
-          const config = service[1];
-          console.log('Extracting content with config:', config.name);
-          const items = await this.extractContent(config);
-          
-          if (!items) {
-            console.log('No items found on page');
-            return;
-          }
-          if (this.disposed) {
-            console.log('Manager disposed during content extraction');
-            return;
-          }
-
-          const itemsArray = Array.isArray(items) ? items : [items];
-          console.log('Found items:', itemsArray.length);
-          
-          if (config.isSeries?.()) {
-            console.log('Creating series button');
-            const seriesButton = this.createSeriesButton(itemsArray);
-            document.body.appendChild(seriesButton);
-            this.addEpisodeButtons(itemsArray);
-          }
-          
-          itemsArray.forEach(item => {
-            console.log('Looking for video elements for item:', item.title);
-            const videoElements = document.querySelectorAll('video');
-            console.log('Found video elements:', videoElements.length);
-            videoElements.forEach(video => {
-              const container = video.parentElement;
-              if (!container || this.disposed) return;
-
-              const button = this.createAddButton(item);
-              container.style.position = 'relative';
-              container.appendChild(button);
-              console.log('Added button to video container');
-            });
-          });
-        } catch (error) {
-          console.error('Error during initialization:', error);
-          this.handleError(error as Error);
-        } finally {
-          resolve();
-        }
-      }, delay);
-    });
-  }
-
-  private handleError(error: Error): void {
-    console.error('Universal Queue Error:', error);
-    // Could add error reporting service here
-  }
-
-  public dispose(): void {
-    this.disposed = true;
-    this.cleanup();
-    
-    // Restore original history methods
-    history.pushState = this.originalPushState;
-    history.replaceState = this.originalReplaceState;
-    
-    // Remove styles
-    if (this.styleSheet && (document as any).adoptedStyleSheets) {
-      (document as any).adoptedStyleSheets = (document as any).adoptedStyleSheets
-        .filter((sheet: CSSStyleSheet) => sheet !== this.styleSheet);
-    }
-    
-    // Remove event listeners
-    window.removeEventListener('popstate', this.handleUrlChange);
-  }
-
-  private async addToQueue(episode: QueueItem, button: HTMLButtonElement): Promise<void> {
-    try {
-      const storage = StorageService.getInstance();
-      await storage.addItem(episode);
-      this.showSuccess(button, `✓ Added "${episode.title}"`);
-    } catch (error) {
-      this.handleError(error as Error);
-      this.showError(button);
-    }
-  }
-}
 
 // Import service configs
 import { NetflixService } from './services/netflix';
@@ -440,17 +19,240 @@ const serviceConfigs: Record<string, ServiceConfig> = {
   'tv.apple.com': new AppleTVService().getConfig()
 };
 
-// Initialize and store instance for cleanup
+export class ContentManager {
+  private currentUrl: string = '';
+  private originalPushState: typeof history.pushState;
+  private originalReplaceState: typeof history.replaceState;
+  private service: ServiceConfig | null = null;
+
+  constructor(private readonly serviceConfigs: Record<string, ServiceConfig>) {
+    console.log('ContentManager initializing...');
+    this.currentUrl = window.location.href;
+    this.originalPushState = history.pushState;
+    this.originalReplaceState = history.replaceState;
+    this.injectStyles();
+    this.init();
+  }
+
+  private injectStyles(): void {
+    const styles = `
+      .universal-queue-button {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 9999;
+        padding: 10px 20px;
+        background-color: #e50914;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        font-size: 14px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      }
+
+      .universal-queue-button:hover {
+        background-color: #f40612;
+      }
+
+      .universal-queue-button:disabled {
+        background-color: #888;
+        cursor: not-allowed;
+      }
+
+      .universal-queue-button.added {
+        background-color: #2ecc71;
+      }
+
+      .universal-queue-button.error {
+        background-color: #e74c3c;
+      }
+    `;
+
+    // Add a data attribute to identify our injected styles for cleanup
+    const styleElement = document.createElement('style');
+    styleElement.setAttribute('data-source', 'universal-queue');
+    styleElement.textContent = styles;
+    document.head.appendChild(styleElement);
+  }
+
+  private async init(): Promise<void> {
+    try {
+      this.service = this.detectService(this.currentUrl);
+      
+      // Add delay for Netflix to load content
+      if (this.currentUrl.includes('netflix.com')) {
+        console.log('Content: Waiting for Netflix to load...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+      
+      if (this.service?.isSeries?.()) {
+        console.log('Content: Detected series page');
+        const seriesData = await this.service.getSeriesData?.();
+        
+        if (seriesData && 'episodes' in seriesData) {
+          console.log('Content: Creating series button with data:', {
+            title: seriesData.title,
+            episodeCount: seriesData.episodeCount
+          });
+          try {
+            const seriesButton = this.createSeriesButton(seriesData);
+            document.body.appendChild(seriesButton);
+            console.log('Content: Series button added to page');
+          } catch (error) {
+            console.error('Content: Error creating/adding button:', error instanceof Error ? error.message : String(error));
+          }
+        } else {
+          console.warn('Content: Invalid series data received');
+        }
+      }
+    } catch (error) {
+      console.error('Content: Error initializing:', error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  private createSeriesButton(seriesData: { title: string; episodes: QueueItem[]; episodeCount: number }): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.textContent = 'Add Series to Queue';
+    button.classList.add('universal-queue-button');
+    
+    // Add click handler for series
+    button.addEventListener('click', async () => {
+      console.log('Content: Series button clicked');
+      await this.handleSeriesClick(button, seriesData);
+    });
+
+    return button;
+  }
+
+  private async handleSeriesClick(
+    button: HTMLButtonElement, 
+    seriesData: { title: string; episodes: QueueItem[]; episodeCount: number }
+  ): Promise<void> {
+    console.log('Content: Series button clicked:', {
+      title: seriesData.title,
+      episodeCount: seriesData.episodeCount
+    });
+
+    try {
+      // Update button state
+      button.disabled = true;
+      button.textContent = 'Adding Series...';
+      console.log('Content: Series button state updated to loading');
+
+      // Add each episode to queue
+      console.log('Content: Starting to add episodes');
+      const episodes = seriesData.episodes || [];
+      for (const episode of episodes) {
+        console.log('Content: Adding episode:', {
+          number: 'episodeNumber' in episode ? episode.episodeNumber : undefined,
+          title: episode.title
+        });
+        await this.addToQueue(episode, button);
+      }
+
+      // Update button state after all episodes added
+      button.textContent = 'Series Added';
+      button.classList.add('added');
+      console.log('Content: All episodes added successfully');
+    } catch (error) {
+      console.error('Content: Error adding series:', error instanceof Error ? error.message : String(error));
+      button.textContent = 'Error - Try Again';
+      button.classList.add('error');
+      button.disabled = false;
+    }
+  }
+
+  private async addToQueue(episode: QueueItem, button: HTMLButtonElement): Promise<void> {
+    console.log('Content: Adding to queue:', {
+      type: episode.type,
+      title: episode.title,
+      episodeNumber: 'episodeNumber' in episode ? episode.episodeNumber : undefined,
+      seriesTitle: 'seriesTitle' in episode ? episode.seriesTitle : undefined
+    });
+
+    try {
+      // Disable button and show loading state
+      button.disabled = true;
+      button.textContent = 'Adding...';
+      console.log('Content: Button state updated to loading');
+
+      // Send message to background script
+      console.log('Content: Sending message to background script');
+      const response = await chrome.runtime.sendMessage({
+        type: 'ADD_TO_QUEUE',
+        item: episode
+      });
+      console.log('Content: Received response from background:', response);
+
+      // Update button state based on response
+      if (response?.success) {
+        button.textContent = 'Added to Queue';
+        button.classList.add('added');
+        console.log('Content: Item successfully added to queue');
+      } else {
+        throw new Error(response?.error || 'Unknown error');
+      }
+    } catch (error) {
+      console.error('Content: Error adding to queue:', error instanceof Error ? error.message : String(error));
+      button.textContent = 'Error - Try Again';
+      button.classList.add('error');
+      button.disabled = false;
+    }
+  }
+
+  private detectService(url: string): ServiceConfig | null {
+    const hostname = new URL(url).hostname;
+    return Object.entries(this.serviceConfigs).find(([domain]) => hostname.includes(domain))?.[1] ?? null;
+  }
+
+  /**
+   * Cleanup method that removes all extension-related elements and restores original state
+   * Called when:
+   * 1. The extension is disabled/unloaded
+   * 2. The page is unloaded (via unload event listener)
+   * 3. Explicitly called during cleanup operations
+   */
+  public dispose(): void {
+    console.log('Content: Disposing ContentManager...');
+    
+    // Find and remove all style elements we injected
+    // We use the data-source attribute to ensure we only remove our styles
+    document.querySelectorAll('style[data-source="universal-queue"]')
+      .forEach(el => {
+        console.log('Content: Removing injected styles');
+        el.remove();
+      });
+    
+    // Find and remove all buttons we created
+    // Using the universal-queue-button class to identify our elements
+    document.querySelectorAll('.universal-queue-button')
+      .forEach(el => {
+        console.log('Content: Removing universal queue button');
+        el.remove();
+      });
+      
+    // Restore the original history methods to prevent memory leaks
+    // and ensure proper cleanup of our URL monitoring
+    if (this.originalPushState) {
+      console.log('Content: Restoring original pushState');
+      history.pushState = this.originalPushState;
+    }
+    if (this.originalReplaceState) {
+      console.log('Content: Restoring original replaceState');
+      history.replaceState = this.originalReplaceState;
+    }
+
+    console.log('Content: ContentManager disposed');
+  }
+}
+
+// Create a single instance of the ContentManager
+// This ensures we don't create multiple buttons or event listeners
 const contentManager = new ContentManager(serviceConfigs);
 
-// Cleanup on extension unload
+// Register cleanup handler for when the page is unloaded
+// This ensures we don't leave any elements behind when navigating away
 window.addEventListener('unload', () => {
   contentManager.dispose();
-});
-
-// Initialize immediately with a delay to allow page to load
-setTimeout(() => {
-  contentManager.init().catch(error => {
-    console.error('Failed to initialize content script:', error);
-  });
-}, 5000); 
+}); 

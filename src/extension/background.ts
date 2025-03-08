@@ -64,13 +64,35 @@ const serviceConfigs: Record<string, ServiceConfig> = {
 
 // Listen for messages from content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  console.log('Background: Received message:', {
+    type: message.type,
+    from: sender.url,
+    tabId: sender.tab?.id
+  });
+
   if (message.type === 'VIDEO_COMPLETED') {
     handleVideoCompletion(sender.tab?.id, sender.tab?.url);
   } else if (message.type === 'ADD_TO_QUEUE') {
-    handleAddToQueue(message.item).then(sendResponse);
-    return true; // Will respond asynchronously
+    console.log('Background: Processing ADD_TO_QUEUE message:', {
+      itemType: message.item.type,
+      title: message.item.title,
+      episodeNumber: 'episodeNumber' in message.item ? message.item.episodeNumber : undefined
+    });
+
+    handleAddToQueue(message.item)
+      .then(result => {
+        console.log('Background: Queue item processed:', result);
+        sendResponse(result);
+      })
+      .catch(error => {
+        console.error('Background: Error processing queue item:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+
+    return true; // Keep the message channel open for async response
   }
-  return true;
+
+  return false;
 });
 
 async function handleVideoCompletion(tabId?: number, tabUrl?: string) {
@@ -98,35 +120,40 @@ async function handleVideoCompletion(tabId?: number, tabUrl?: string) {
 }
 
 async function handleAddToQueue(item: any) {
+  console.log('Background: Handling add to queue:', {
+    type: item.type,
+    title: item.title
+  });
+
   try {
-    if (!item || !item.title || !item.url) {
-      throw new Error('Invalid item data');
-    }
+    // Store the item
+    const storage = await StorageService.getInstance();
+    await storage.addItem(item);
+    console.log('Background: Item stored successfully');
 
-    const storage = StorageService.getInstance();
-    const state = await storage.getQueueState();
-    
-    // Check if item is already in queue
-    const exists = state.items.some(queueItem => queueItem.url === item.url);
-    if (exists) {
-      return { success: false, error: 'Item is already in queue' };
-    }
+    // Notify any open popup/tabs
+    const tabs = await chrome.tabs.query({ url: chrome.runtime.getURL('/index.html') });
+    console.log('Background: Found React tabs:', tabs.length);
 
-    // Add item to queue
-    await storage.addItem({
-      ...item,
-      id: crypto.randomUUID(),
-      addedAt: Date.now()
-    });
+    if (tabs.length > 0) {
+      for (const tab of tabs) {
+        console.log('Background: Notifying tab:', tab.id);
+        try {
+          await chrome.tabs.sendMessage(tab.id!, {
+            type: 'QUEUE_UPDATED',
+            item
+          });
+          console.log('Background: Tab notified successfully');
+        } catch (error) {
+          console.warn('Background: Error notifying tab:', error instanceof Error ? error.message : String(error));
+        }
+      }
+    }
 
     return { success: true };
-  } catch (error: any) {
-    console.error('Error adding item to queue:', error);
-    return { 
-      success: false, 
-      error: error?.message || 'Failed to add to queue',
-      details: error?.stack || ''
-    };
+  } catch (error) {
+    console.error('Background: Error in handleAddToQueue:', error instanceof Error ? error.message : String(error));
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
 
