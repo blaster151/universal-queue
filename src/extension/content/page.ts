@@ -30,7 +30,7 @@ export class PageManager {
     // Clean up any existing UI
     this.uiManager.cleanup();
 
-    const items = await this.extractContent();
+    const items = await this.getContent();
     if (!items) {
       console.log('DEBUG: No content found on page');
       return;
@@ -39,21 +39,24 @@ export class PageManager {
     this.injectUI(items);
   }
 
-  private async extractContent(): Promise<QueueItem | QueueItem[] | null> {
-    if (!this.config) return null;
-
-    // Check if this is a series page
-    if (this.config.isSeries?.()) {
-      return this.config.getSeriesData?.() || null;
+  async getContent(): Promise<QueueItem | QueueItem[] | null> {
+    if (!this.config) {
+      console.log('No service config found for this page');
+      return null;
     }
 
-    // Single video content
-    const titleElement = document.querySelector(this.config.titleSelector) as HTMLElement;
-    const thumbnailElement = this.config.thumbnailSelector ? 
-      document.querySelector(this.config.thumbnailSelector) as HTMLImageElement : 
-      null;
-    
-    if (!titleElement) return null;
+    if (this.config.isSeries?.()) {
+      console.log('Detected series page');
+      const seriesData = await this.config.getSeriesData?.();
+      return seriesData?.episodes || null;
+    }
+
+    // Handle single video content
+    const titleElement = document.querySelector(this.config.titleSelector);
+    if (!titleElement) {
+      console.log('No title element found');
+      return null;
+    }
 
     return {
       id: Date.now().toString(),
@@ -61,7 +64,7 @@ export class PageManager {
       type: 'movie',
       url: window.location.href,
       service: this.config.name,
-      thumbnailUrl: thumbnailElement?.src || '',
+      thumbnailUrl: this.getThumbnailUrl() || '',
       addedAt: Date.now(),
       order: 0
     };
@@ -93,5 +96,11 @@ export class PageManager {
 
   public destroy(): void {
     this.uiManager.destroy();
+  }
+
+  private getThumbnailUrl(): string | null {
+    if (!this.config?.thumbnailSelector) return null;
+    const thumbnailElement = document.querySelector(this.config.thumbnailSelector) as HTMLImageElement;
+    return thumbnailElement?.src || null;
   }
 } 

@@ -6,8 +6,8 @@ class ContentManager {
   private currentUrl: string;
   private initTimeout: number | null = null;
   private styleSheet: CSSStyleSheet | null = null;
-  private originalPushState: typeof history.pushState;
-  private originalReplaceState: typeof history.replaceState;
+  public originalPushState: typeof history.pushState;
+  public originalReplaceState: typeof history.replaceState;
   private configs: Record<string, ServiceConfig>;
   private disposed = false;
 
@@ -113,13 +113,12 @@ class ContentManager {
   }
 
   private setupHistoryListeners(): void {
-    // Safely wrap history methods
-    history.pushState = (...args) => {
+    history.pushState = (...args: Parameters<typeof history.pushState>) => {
       this.originalPushState.apply(history, args);
       this.handleUrlChange();
     };
 
-    history.replaceState = (...args) => {
+    history.replaceState = (...args: Parameters<typeof history.replaceState>) => {
       this.originalReplaceState.apply(history, args);
       this.handleUrlChange();
     };
@@ -147,7 +146,7 @@ class ContentManager {
         await storage.addItem(item);
         this.showSuccess(button);
       } catch (error) {
-        this.handleError(error);
+        this.handleError(error as Error);
         this.showError(button);
       }
     });
@@ -156,25 +155,68 @@ class ContentManager {
     return button;
   }
 
+  private createEpisodeButton(episode: QueueItem): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.className = 'universal-queue-episode-button';
+    button.textContent = 'Add to Queue';
+    button.style.cssText = `
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      padding: 4px 8px;
+      background: #e50914;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      z-index: 1000;
+      transition: background-color 0.2s;
+    `;
+    
+    button.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.addToQueue(episode, button);
+    });
+    
+    return button;
+  }
+
   private createSeriesButton(episodes: QueueItem[]): HTMLButtonElement {
     const button = document.createElement('button');
     button.className = 'universal-queue-series-button';
-    button.innerHTML = `Add ${episodes.length} Unwatched Episodes to Queue`;
-    button.title = 'Add all unwatched episodes to Universal Queue';
+    button.textContent = 'Add All Episodes';
+    button.style.cssText = `
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      padding: 8px 16px;
+      background: #e50914;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      z-index: 1000;
+      transition: background-color 0.2s;
+    `;
     
-    button.addEventListener('click', async () => {
-      try {
-        const storage = StorageService.getInstance();
-        await Promise.all(episodes.map(episode => storage.addItem(episode)));
-        this.showSuccess(button, `✓ Added ${episodes.length} Episodes to Queue`);
-      } catch (error) {
-        this.handleError(error);
-        this.showError(button);
+    button.addEventListener('click', () => {
+      episodes.forEach(episode => this.addToQueue(episode, button));
+    });
+    
+    return button;
+  }
+
+  private addEpisodeButtons(episodes: QueueItem[]): void {
+    const episodeItems = document.querySelectorAll('.titleCardList--container.episode-item');
+    episodeItems.forEach((item, index) => {
+      const episode = episodes[index];
+      if (episode) {
+        const button = this.createEpisodeButton(episode);
+        item.appendChild(button);
       }
     });
-
-    this.uiElements.add(button);
-    return button;
   }
 
   private showSuccess(element: HTMLElement, text?: string): void {
@@ -229,7 +271,11 @@ class ContentManager {
         console.log('Detected series, getting series data...');
         const seriesData = await config.getSeriesData?.();
         console.log('Series data:', seriesData);
-        return seriesData || null;
+        if (seriesData) {
+          // Return the episodes array for backward compatibility
+          return seriesData.episodes;
+        }
+        return null;
       }
 
       const titleElement = document.querySelector(config.titleSelector);
@@ -258,7 +304,7 @@ class ContentManager {
         order: 0
       };
     } catch (error) {
-      this.handleError(error);
+      this.handleError(error as Error);
       return null;
     }
   }
@@ -313,6 +359,7 @@ class ContentManager {
             console.log('Creating series button');
             const seriesButton = this.createSeriesButton(itemsArray);
             document.body.appendChild(seriesButton);
+            this.addEpisodeButtons(itemsArray);
           }
           
           itemsArray.forEach(item => {
@@ -331,7 +378,7 @@ class ContentManager {
           });
         } catch (error) {
           console.error('Error during initialization:', error);
-          this.handleError(error);
+          this.handleError(error as Error);
         } finally {
           resolve();
         }
@@ -339,7 +386,7 @@ class ContentManager {
     });
   }
 
-  private handleError(error: unknown): void {
+  private handleError(error: Error): void {
     console.error('Universal Queue Error:', error);
     // Could add error reporting service here
   }
@@ -360,6 +407,17 @@ class ContentManager {
     
     // Remove event listeners
     window.removeEventListener('popstate', this.handleUrlChange);
+  }
+
+  private async addToQueue(episode: QueueItem, button: HTMLButtonElement): Promise<void> {
+    try {
+      const storage = StorageService.getInstance();
+      await storage.addItem(episode);
+      this.showSuccess(button, `✓ Added "${episode.title}"`);
+    } catch (error) {
+      this.handleError(error as Error);
+      this.showError(button);
+    }
   }
 }
 

@@ -1,6 +1,20 @@
 import { ServiceConfig } from '@/common/types';
 import { StorageService } from '@/common/storage';
 
+// Keep the service worker alive with periodic alarms
+chrome.alarms.create('keepAlive', { periodInMinutes: 1 });
+
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'keepAlive') {
+    // Perform a lightweight operation to keep the service worker active
+    chrome.storage.local.get(['lastActive'], () => {
+      chrome.storage.local.set({ 
+        lastActive: Date.now() 
+      });
+    });
+  }
+});
+
 const serviceConfigs: Record<string, ServiceConfig> = {
   'netflix.com': {
     name: 'netflix',
@@ -49,9 +63,12 @@ const serviceConfigs: Record<string, ServiceConfig> = {
 };
 
 // Listen for messages from content scripts
-chrome.runtime.onMessage.addListener((message, sender) => {
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'VIDEO_COMPLETED') {
     handleVideoCompletion(sender.tab?.id, sender.tab?.url);
+  } else if (message.type === 'ADD_TO_QUEUE') {
+    handleAddToQueue(message.item).then(sendResponse);
+    return true; // Will respond asynchronously
   }
   return true;
 });
@@ -77,6 +94,39 @@ async function handleVideoCompletion(tabId?: number, tabUrl?: string) {
   if (nextItem) {
     // Open the next item in a new tab
     chrome.tabs.create({ url: nextItem.url });
+  }
+}
+
+async function handleAddToQueue(item: any) {
+  try {
+    if (!item || !item.title || !item.url) {
+      throw new Error('Invalid item data');
+    }
+
+    const storage = StorageService.getInstance();
+    const state = await storage.getQueueState();
+    
+    // Check if item is already in queue
+    const exists = state.items.some(queueItem => queueItem.url === item.url);
+    if (exists) {
+      return { success: false, error: 'Item is already in queue' };
+    }
+
+    // Add item to queue
+    await storage.addItem({
+      ...item,
+      id: crypto.randomUUID(),
+      addedAt: Date.now()
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Error adding item to queue:', error);
+    return { 
+      success: false, 
+      error: error?.message || 'Failed to add to queue',
+      details: error?.stack || ''
+    };
   }
 }
 

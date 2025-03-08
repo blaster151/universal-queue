@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { DragDropContext, Droppable, Draggable, DropResult, DragStart, DragUpdate } from 'react-beautiful-dnd';
-import { QueueItem } from '@/common/types';
+import { QueueItem, EpisodeItem } from '@/common/types';
 import { StorageService } from '@/common/storage';
 import './App.css';
 
@@ -91,7 +91,7 @@ function App() {
     }
   };
 
-  const handleAddItem = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUrl) return;
 
@@ -101,6 +101,7 @@ function App() {
       type: 'movie',
       url: newUrl,
       service: 'other',
+      thumbnailUrl: '',
       addedAt: Date.now(),
       order: items.length
     };
@@ -108,6 +109,28 @@ function App() {
     await storage.addItem(newItem);
     setItems([...items, newItem]);
     setNewUrl('');
+  };
+
+  const renderQueueItem = (item: QueueItem) => {
+    const isEpisode = item.type === 'episode';
+    const episodeItem = isEpisode ? item as EpisodeItem : null;
+
+    return (
+      <div className="queue-item" key={item.id}>
+        {item.thumbnailUrl && (
+          <img src={item.thumbnailUrl} alt={item.title} className="thumbnail" />
+        )}
+        <div className="item-info">
+          <h3>{item.title}</h3>
+          {episodeItem && (
+            <p className="episode-info">
+              {episodeItem.seriesTitle} - S{episodeItem.seasonNumber}E{episodeItem.episodeNumber}
+            </p>
+          )}
+          <p className="service">{item.service}</p>
+        </div>
+      </div>
+    );
   };
 
   console.log('DND: Current items:', items);
@@ -118,7 +141,7 @@ function App() {
         <h1>Universal Queue</h1>
       </header>
 
-      <form onSubmit={handleAddItem} className="add-form">
+      <form onSubmit={handleSubmit} className="add-form">
         <input
           type="url"
           value={newUrl}
@@ -168,22 +191,7 @@ function App() {
                           alt={item.service}
                           className="service-logo"
                         />
-                        {item.thumbnailUrl && (
-                          <img
-                            src={item.thumbnailUrl}
-                            alt={item.title}
-                            className="thumbnail"
-                          />
-                        )}
-                        <div className="item-info">
-                          <h3>{item.title}</h3>
-                          <p className="service">{item.service}</p>
-                          {item.type === 'episode' && (
-                            <p className="episode-info">
-                              S{item.seasonNumber}E{item.episodeNumber}
-                            </p>
-                          )}
-                        </div>
+                        {renderQueueItem(item)}
                         <button
                           className="play-button"
                           onClick={() => window.open(item.url, '_blank')}

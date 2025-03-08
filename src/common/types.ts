@@ -3,17 +3,35 @@ export type StreamingService = 'netflix' | 'youtube' | 'disneyplus' | 'primevide
 export interface QueueItem {
   id: string;
   title: string;
-  type: 'movie' | 'episode';
+  type: 'movie' | 'episode' | 'video';
   url: string;
   service: StreamingService;
-  thumbnailUrl?: string;
-  duration?: number;
-  episodeNumber?: number;
-  seasonNumber?: number;
-  synopsis?: string;
-  isWatched?: boolean;
+  thumbnailUrl: string;
   addedAt: number;
   order: number;
+  duration?: number;
+  progress?: number;
+}
+
+export interface EpisodeItem extends QueueItem {
+  type: 'episode';
+  seriesId: string;
+  seriesTitle: string;
+  seasonNumber: number;
+  episodeNumber: number;
+  seriesThumbnailUrl: string;
+}
+
+export interface SeriesData {
+  type: 'series';
+  id: string;
+  title: string;
+  service: StreamingService;
+  thumbnailUrl: string;
+  seasonNumber: number;
+  episodeCount: number;
+  episodes: EpisodeItem[];
+  addedAt: number;
 }
 
 export interface ServiceConfig {
@@ -27,14 +45,14 @@ export interface ServiceConfig {
     value: string;
   };
   isSeries?: () => boolean;
-  getSeriesData?: () => Promise<QueueItem[]>;
+  getSeriesData?: () => Promise<SeriesData | null>;
   episodeInfo?: {
     containerSelector: string;
     titleSelector: string;
-    numberSelector: string;
-    synopsisSelector: string;
-    durationSelector: string;
-    progressSelector: string;
+    numberSelector?: string;
+    synopsisSelector?: string;
+    durationSelector?: string;
+    progressSelector?: string;
   };
   features?: {
     expandList?: {

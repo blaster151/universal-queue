@@ -19,37 +19,29 @@ export abstract class BaseStreamingService {
     if (!this.config.getSeriesData) {
       return [];
     }
-    return this.config.getSeriesData();
+    const seriesData = await this.config.getSeriesData();
+    return seriesData?.episodes || [];
   }
 
-  protected extractEpisodeData(element: Element): Partial<QueueItem> {
-    if (!this.config.episodeInfo) {
-      return {};
-    }
+  protected extractEpisodeInfo(element: Element, config: ServiceConfig): Partial<QueueItem> {
+    const { episodeInfo } = config;
+    if (!episodeInfo) return {};
 
     const {
       titleSelector,
-      numberSelector,
-      synopsisSelector,
       durationSelector,
       progressSelector
-    } = this.config.episodeInfo;
+    } = episodeInfo;
 
     const title = element.querySelector(titleSelector)?.textContent?.trim();
-    const numberText = element.querySelector(numberSelector)?.textContent?.trim();
-    const synopsis = element.querySelector(synopsisSelector)?.textContent?.trim();
-    const duration = element.querySelector(durationSelector)?.textContent?.trim();
-    const progress = element.querySelector(progressSelector);
-
-    // Parse episode number (e.g., "Episode 1" -> 1)
-    const episodeNumber = numberText ? parseInt(numberText.match(/\d+/)?.[0] || '0') : undefined;
+    const duration = durationSelector ? element.querySelector(durationSelector)?.textContent?.trim() : undefined;
+    const progress = progressSelector ? element.querySelector(progressSelector) : undefined;
 
     return {
       title,
-      synopsis,
       duration: duration ? this.parseDuration(duration) : undefined,
-      episodeNumber,
-      isWatched: progress ? this.isEpisodeWatched(progress) : false
+      progress: progress ? this.parseProgress(progress) : 0,
+      type: 'episode' as const
     };
   }
 
@@ -67,5 +59,11 @@ export abstract class BaseStreamingService {
   protected isEpisodeWatched(_progressElement: Element): boolean {
     // Default implementation - override in specific service classes if needed
     return false;
+  }
+
+  protected parseProgress(progressElement: Element): number {
+    // Default implementation - override in specific service classes if needed
+    const value = progressElement.getAttribute('value');
+    return value ? parseFloat(value) : 0;
   }
 } 
