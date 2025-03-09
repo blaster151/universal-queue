@@ -126,8 +126,13 @@ async function handleAddToQueue(item: any) {
   });
 
   try {
+    // Initialize storage service
+    const storage = StorageService.getInstance();
+    if (!storage) {
+      throw new Error('Failed to initialize storage service');
+    }
+
     // Store the item
-    const storage = await StorageService.getInstance();
     await storage.addItem(item);
     console.log('Background: Item stored successfully');
 

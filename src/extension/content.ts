@@ -48,7 +48,32 @@ export class ContentManager {
         border-radius: 4px;
         font-size: 14px;
         cursor: pointer;
-        transition: background-color 0.2s;
+        transition: all 0.2s;
+      }
+
+      /* Debug styles - will remove later */
+      .titleCard--container,
+      .titleCardList--container {
+        border: 2px solid yellow !important;
+        position: relative !important;
+      }
+
+      .titleCard--metadataWrapper {
+        border: 2px solid blue !important;
+        position: relative !important;
+      }
+
+      .universal-queue-button.episode-button {
+        position: absolute !important;
+        top: 8px !important;
+        right: 8px !important;
+        padding: 4px 8px !important;
+        font-size: 12px !important;
+        opacity: 1 !important; /* Force visible for debugging */
+        background-color: rgba(229, 9, 20, 0.9) !important;
+        border-radius: 2px !important;
+        z-index: 99999 !important;
+        border: 2px solid lime !important;
       }
 
       .universal-queue-button:hover {
@@ -66,6 +91,23 @@ export class ContentManager {
 
       .universal-queue-button.error {
         background-color: #e74c3c;
+      }
+
+      .titleCard--container:hover .universal-queue-button.episode-button,
+      .titleCardList--container:hover .universal-queue-button.episode-button {
+        opacity: 1;
+      }
+
+      .universal-queue-button.episode-button:hover {
+        background-color: rgba(244, 6, 18, 0.9);
+      }
+
+      .universal-queue-button.episode-button.added {
+        background-color: rgba(46, 204, 113, 0.9);
+      }
+
+      .universal-queue-button.episode-button.error {
+        background-color: rgba(231, 76, 60, 0.9);
       }
     `;
 
@@ -96,9 +138,51 @@ export class ContentManager {
             episodeCount: seriesData.episodeCount
           });
           try {
+            // Create series-wide button
             const seriesButton = this.createSeriesButton(seriesData);
             document.body.appendChild(seriesButton);
             console.log('Content: Series button added to page');
+
+            // Create individual episode buttons
+            console.log('Content: Creating individual episode buttons');
+            seriesData.episodes.forEach((episode) => {
+              const episodeButton = this.createEpisodeButton(episode);
+              // Try multiple selectors to find the episode element
+              const selectors = [
+                `.titleCardList--container[aria-label*="Episode ${episode.episodeNumber}"]`,
+                `.titleCard--container[aria-label*="Episode ${episode.episodeNumber}"]`,
+                `[data-uia="episode-item-${episode.episodeNumber}"]`,
+                `[data-uia*="episode-${episode.episodeNumber}"]`,
+                `[class*="episode-item-${episode.episodeNumber}"]`,
+                // Find by title if number fails
+                episode.title ? `.titleCardList--container[aria-label*="${episode.title}"]` : '',
+                episode.title ? `.titleCard--container[aria-label*="${episode.title}"]` : ''
+              ].filter(Boolean);
+
+              console.log('Content: Trying selectors for episode', episode.episodeNumber, selectors);
+              
+              const episodeElement = document.querySelector(selectors.join(', '));
+              if (episodeElement) {
+                console.log('Content: Found episode element:', {
+                  episodeNumber: episode.episodeNumber,
+                  elementClasses: episodeElement.className,
+                  elementId: episodeElement.id,
+                  ariaLabel: episodeElement.getAttribute('aria-label')
+                });
+
+                // Find a good spot to insert the button
+                const buttonContainer = episodeElement.querySelector('.titleCard--metadataWrapper') || episodeElement;
+                console.log('Content: Button container:', {
+                  container: buttonContainer === episodeElement ? 'episode element' : 'metadata wrapper',
+                  classes: buttonContainer.className
+                });
+
+                buttonContainer.appendChild(episodeButton);
+                console.log('Content: Added button for episode', episode.episodeNumber);
+              } else {
+                console.warn('Content: Could not find element for episode', episode.episodeNumber, 'with selectors:', selectors);
+              }
+            });
           } catch (error) {
             console.error('Content: Error creating/adding button:', error instanceof Error ? error.message : String(error));
           }
@@ -199,6 +283,42 @@ export class ContentManager {
       button.classList.add('error');
       button.disabled = false;
     }
+  }
+
+  private createEpisodeButton(episode: QueueItem): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.textContent = 'Add Episode';
+    button.classList.add('universal-queue-button', 'episode-button');
+    button.style.cssText = `
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 9999;
+      padding: 5px 10px;
+      font-size: 12px;
+      opacity: 0;
+      transition: opacity 0.2s;
+    `;
+
+    // Add hover effect to show/hide button
+    const parentElement = button.parentElement;
+    if (parentElement) {
+      parentElement.addEventListener('mouseenter', () => {
+        button.style.opacity = '1';
+      });
+      parentElement.addEventListener('mouseleave', () => {
+        button.style.opacity = '0';
+      });
+    }
+
+    // Add click handler
+    button.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      await this.addToQueue(episode, button);
+    });
+
+    return button;
   }
 
   private detectService(url: string): ServiceConfig | null {
