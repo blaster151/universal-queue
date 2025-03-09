@@ -1,4 +1,5 @@
-import { ServiceConfig, QueueItem, EpisodeItem } from '../common/types';
+import { QueueItem, EpisodeItem } from '../common/types';
+import { BaseStreamingService } from './services/base';
 
 // Import service configs
 import { NetflixService } from './services/netflix';
@@ -10,23 +11,24 @@ import { HuluService } from './services/hulu';
 import { AppleTVService } from './services/appletv';
 import { StorageService } from '../common/storage';
 
-const serviceConfigs: Record<string, ServiceConfig> = {
-  'netflix.com': new NetflixService().getConfig(),
-  'youtube.com': new YouTubeService().getConfig(),
-  'disneyplus.com': new DisneyPlusService().getConfig(),
-  'primevideo.com': new PrimeVideoService().getConfig(),
-  'max.com': new MaxService().getConfig(),
-  'hulu.com': new HuluService().getConfig(),
-  'tv.apple.com': new AppleTVService().getConfig()
+// Store service instances instead of just configs
+const services: Record<string, BaseStreamingService> = {
+  'netflix.com': new NetflixService(),
+  'youtube.com': new YouTubeService(),
+  'disneyplus.com': new DisneyPlusService(),
+  'primevideo.com': new PrimeVideoService(),
+  'max.com': new MaxService(),
+  'hulu.com': new HuluService(),
+  'tv.apple.com': new AppleTVService()
 };
 
 export class ContentManager {
   private currentUrl: string = '';
   private originalPushState: typeof history.pushState;
   private originalReplaceState: typeof history.replaceState;
-  private service: ServiceConfig | null = null;
+  private service: BaseStreamingService | null = null;
 
-  constructor(private readonly serviceConfigs: Record<string, ServiceConfig>) {
+  constructor(private readonly services: Record<string, BaseStreamingService>) {
     console.log('ContentManager initializing...');
     this.currentUrl = window.location.href;
     this.originalPushState = history.pushState;
@@ -122,6 +124,10 @@ export class ContentManager {
   private async init(): Promise<void> {
     try {
       this.service = this.detectService(this.currentUrl);
+      console.log('Content: Service detection result:', {
+        serviceName: this.service?.constructor.name,
+        hasService: !!this.service
+      });
       
       // Add delay for Netflix to load content
       if (this.currentUrl.includes('netflix.com')) {
@@ -129,9 +135,38 @@ export class ContentManager {
         await new Promise(resolve => setTimeout(resolve, 5000));
       }
       
-      if (this.service?.isSeries?.()) {
-        console.log('Content: Detected series page');
-        const seriesData = await this.service.getSeriesData?.();
+      const config = this.service?.getConfig();
+      console.log('Content: Got service config:', {
+        hasConfig: !!config,
+        configName: config?.name,
+        hasIsSeries: !!config?.isSeries
+      });
+
+      if (!config) {
+        console.error('Content: No config available from service');
+        return;
+      }
+
+      if (!config.isSeries) {
+        console.error('Content: Service config does not have isSeries method');
+        return;
+      }
+
+      const isSeries = await Promise.resolve(config.isSeries());
+      console.log('Content: isSeries check result:', isSeries);
+      
+      if (isSeries) {
+        console.log('Content: Detected series page, getting series data...');
+        if (!config.getSeriesData) {
+          console.error('Content: Service config does not have getSeriesData method');
+          return;
+        }
+        const seriesData = await Promise.resolve(config.getSeriesData());
+        console.log('Content: Got series data:', {
+          hasData: !!seriesData,
+          title: seriesData?.title,
+          episodeCount: seriesData?.episodeCount
+        });
         
         if (seriesData && 'episodes' in seriesData) {
           console.log('Content: Creating series button with data:', {
@@ -378,7 +413,7 @@ export class ContentManager {
     return button;
   }
 
-  private detectService(url: string): ServiceConfig | null {
+  private detectService(url: string): BaseStreamingService | null {
     console.log('Content: Detecting service for URL:', url);
     const hostname = new URL(url).hostname;
     console.log('Content: Hostname:', hostname);
@@ -388,7 +423,7 @@ export class ContentManager {
     console.log('Content: Normalized hostname:', normalizedHostname);
     
     // Find the matching service
-    const matchingService = Object.entries(this.serviceConfigs).find(([domain]) => {
+    const matchingService = Object.entries(this.services).find(([domain]) => {
       const matches = normalizedHostname === domain || normalizedHostname.endsWith('.' + domain);
       console.log('Content: Checking domain:', domain, 'matches:', matches);
       return matches;
@@ -444,12 +479,10 @@ export class ContentManager {
   }
 }
 
-// Create a single instance of the ContentManager
-// This ensures we don't create multiple buttons or event listeners
-const contentManager = new ContentManager(serviceConfigs);
+// Create a single instance of the ContentManager with service instances
+const contentManager = new ContentManager(services);
 
 // Register cleanup handler for when the page is unloaded
-// This ensures we don't leave any elements behind when navigating away
 window.addEventListener('unload', () => {
   contentManager.dispose();
 }); 

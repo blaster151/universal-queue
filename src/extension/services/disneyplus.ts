@@ -26,8 +26,57 @@ export class DisneyPlusService extends BaseStreamingService {
       value: 'video.currentTime >= video.duration - 0.5'
     },
     isSeries: () => {
+      console.log('DisneyPlusService: Checking if series page...');
       const url = window.location.href;
-      return url.includes('/series/');
+      console.log('DisneyPlusService: Current URL:', url);
+
+      // Check URL pattern - either series or browse
+      const isSeriesUrl = url.includes('/series/');
+      const isBrowseUrl = url.includes('/browse/');
+      console.log('DisneyPlusService: URL check:', { isSeriesUrl, isBrowseUrl });
+
+      // Log all potential elements for debugging
+      console.log('DisneyPlusService: All h1 elements:', Array.from(document.querySelectorAll('h1')).map(el => ({
+        text: el.textContent,
+        className: el.className
+      })));
+
+      console.log('DisneyPlusService: All data-testid elements:', Array.from(document.querySelectorAll('[data-testid]')).map(el => ({
+        testId: el.getAttribute('data-testid'),
+        text: el.textContent,
+        className: el.className
+      })));
+
+      // Check for series elements
+      const hasTitle = !!document.querySelector('[data-testid="series-title"], h1');
+      const hasSeasonSelector = !!document.querySelector('[data-testid="dropdown-button"]');
+      const hasEpisodeContainer = !!document.querySelector('[data-testid="episode-container"]');
+      const hasEpisodeItems = document.querySelectorAll('[data-testid="set-item"]').length > 0;
+      const hasSeriesMetadata = !!document.querySelector('[data-testid="series-metadata"]');
+
+      // Additional checks for browse page
+      const hasSeriesHero = !!document.querySelector('[data-testid="series-hero"]');
+      const hasSeriesDetails = !!document.querySelector('[data-testid="series-details"]');
+      const hasSeriesDescription = !!document.querySelector('[data-testid="series-description"]');
+
+      console.log('DisneyPlusService: Page elements:', {
+        hasTitle,
+        hasSeasonSelector,
+        hasEpisodeContainer,
+        hasEpisodeItems,
+        hasSeriesMetadata,
+        hasSeriesHero,
+        hasSeriesDetails,
+        hasSeriesDescription,
+        episodeCount: document.querySelectorAll('[data-testid="set-item"]').length
+      });
+
+      // Consider it a series if we have any series-related elements
+      const isSeries = hasTitle || hasSeasonSelector || hasEpisodeContainer || hasEpisodeItems || 
+                      hasSeriesMetadata || hasSeriesHero || hasSeriesDetails || hasSeriesDescription;
+      console.log('DisneyPlusService: Is series page?', isSeries);
+      
+      return isSeries;
     },
     episodeInfo: {
       containerSelector: '[data-testid="episode-container"]',

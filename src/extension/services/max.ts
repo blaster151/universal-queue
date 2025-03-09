@@ -7,14 +7,15 @@ export class MaxService extends BaseStreamingService {
       title: '[class*="StyledTitle"]:not([class*="PrimaryTitle"]), [class*="StyledSeriesTitle"], h1',
       seasonSelector: '[class*="StyledSelectSort"]',
       episodeList: '[class*="StyledTileGrid"], [class*="StyledEpisodeList"], [class*="StyledEpisodeContainer"]',
-      episodeItem: 'a[href*="/video/watch/"], [class*="StyledTileWrapper"]',
+      episodeItem: '[class*="StyledTileWrapper"], [class*="EpisodeTile"], [class*="episode-tile"]',
       thumbnail: '[class*="StyledImage"]',
-      episodeTitle: '[class*="StyledPrimaryTitle"], [class*="StyledTitle"]',
-      episodeDescription: '[class*="StyledDescription"]',
-      episodeMetadata: '[class*="StyledMetadataContents"]',
+      episodeTitle: '[class*="StyledPrimaryTitle"], [class*="StyledTitle"], [class*="episode-title"]',
+      episodeDescription: '[class*="StyledDescription"], [class*="episode-description"]',
+      episodeMetadata: '[class*="StyledMetadataContents"], [class*="episode-metadata"]',
       watchButton: 'button[class*="StyledBaseNativeButton"]',
       heroImage: '[class*="StyledHeroImage"] [class*="StyledImage"], [class*="StyledPosterImage"] [class*="StyledImage"]',
-      progressBar: '[class*="StyledProgressBar"], [class*="progress-indicator"]'
+      progressBar: '[class*="StyledProgressBar"], [class*="progress-indicator"]',
+      episodeNumber: '[class*="StyledEpisodeNumber"], [class*="episode-number"], [class*="EpisodeNumber"]'
     }
   };
 
@@ -29,13 +30,24 @@ export class MaxService extends BaseStreamingService {
       const hasContent = bodyText.trim().length > 0;
       const hasH1 = document.querySelector('h1') !== null;
       const hasButtons = document.querySelectorAll('button').length > 0;
-      const episodeCount = document.querySelectorAll(this.SELECTORS.series.episodeItem).length;
+      
+      // Log all potential episode elements
+      const episodeElements = document.querySelectorAll(this.SELECTORS.series.episodeItem);
+      console.log('MaxService: Found potential episode elements:', Array.from(episodeElements).map(el => ({
+        className: el.className,
+        id: el.id,
+        ariaLabel: el.getAttribute('aria-label'),
+        text: el.textContent?.trim()
+      })));
+      
+      const episodeCount = episodeElements.length;
       
       console.log('MaxService: Content check:', {
         hasContent,
         hasH1,
         buttonCount: document.querySelectorAll('button').length,
-        episodeCount
+        episodeCount,
+        h1Text: document.querySelector('h1')?.textContent
       });
       
       if (hasContent && (hasH1 || hasButtons) && episodeCount > 0) {
@@ -219,15 +231,22 @@ export class MaxService extends BaseStreamingService {
 
   protected parseDuration(duration: string): number | undefined {
     console.log('MaxService: Parsing duration:', duration);
-    // Max format: "31m"
-    const minutes = parseInt(duration.replace('m', ''));
-    const seconds = !isNaN(minutes) ? minutes * 60 : undefined;
+    // Max format: "TV‑MA28m2011" - extract just the minutes
+    const minutesMatch = duration.match(/(\d+)m/);
+    const minutes = minutesMatch ? parseInt(minutesMatch[1]) : undefined;
+    const seconds = minutes ? minutes * 60 : undefined;
     console.log('MaxService: Parsed duration:', seconds, 'seconds');
     return seconds;
   }
 
   protected getEpisodeInfo(episode: Element): Partial<EpisodeItem> {
-    console.log('MaxService: Getting episode info for element:', episode.getAttribute('href'));
+    console.log('MaxService: Getting episode info for element:', {
+      elementId: episode.id,
+      className: episode.className,
+      href: episode.getAttribute('href'),
+      ariaLabel: episode.getAttribute('aria-label'),
+      text: episode.textContent?.trim()
+    });
     
     const info = super.extractEpisodeInfo(episode, this.config) as Partial<EpisodeItem>;
     info.type = 'episode';
@@ -245,14 +264,51 @@ export class MaxService extends BaseStreamingService {
       console.log('MaxService: Found episode URL:', info.url);
     }
 
-    // Extract episode number from title or dedicated element
-    const numberElement = episode.querySelector('[class*="StyledEpisodeNumber"], [class*="episode-number"]');
+    // Extract episode number - try multiple approaches
+    const numberElement = episode.querySelector(this.SELECTORS.series.episodeNumber);
+    console.log('MaxService: Number element found:', {
+      exists: !!numberElement,
+      text: numberElement?.textContent,
+      className: numberElement?.className
+    });
+
     if (numberElement) {
       const numberText = numberElement.textContent?.trim() || '';
       const numberMatch = numberText.match(/(\d+)/);
       if (numberMatch) {
         info.episodeNumber = parseInt(numberMatch[1]);
-        console.log('MaxService: Extracted episode number:', info.episodeNumber);
+        console.log('MaxService: Extracted episode number from element:', info.episodeNumber);
+      }
+    }
+
+    // Try extracting from aria-label
+    if (!info.episodeNumber && episode.getAttribute('aria-label')) {
+      const ariaLabel = episode.getAttribute('aria-label') || '';
+      const episodeMatch = ariaLabel.match(/Episode (\d+)/i);
+      if (episodeMatch) {
+        info.episodeNumber = parseInt(episodeMatch[1]);
+        console.log('MaxService: Extracted episode number from aria-label:', info.episodeNumber);
+      }
+    }
+
+    // Fallback to extracting from title if no dedicated number element
+    if (!info.episodeNumber) {
+      const titleElement = episode.querySelector(this.SELECTORS.series.episodeTitle);
+      console.log('MaxService: Title element found:', {
+        exists: !!titleElement,
+        text: titleElement?.textContent,
+        className: titleElement?.className
+      });
+
+      const titleText = titleElement?.textContent?.trim() || '';
+      const episodeMatch = titleText.match(/E(\d+):|Episode (\d+)/i);
+      if (episodeMatch) {
+        info.episodeNumber = parseInt(episodeMatch[1] || episodeMatch[2]);
+        info.title = titleText.split(':')[1]?.trim() || titleText;
+        console.log('MaxService: Extracted episode info from title:', {
+          number: info.episodeNumber,
+          title: info.title
+        });
       }
     }
 

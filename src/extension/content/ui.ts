@@ -1,4 +1,4 @@
-import { QueueItem } from '@/common/types';
+import { QueueItem, EpisodeItem } from '@/common/types';
 import { StorageService } from '@/common/storage';
 
 const STYLES = `
@@ -287,4 +287,81 @@ export class UIManager {
       this.styleSheet = null;
     }
   }
-} 
+
+  private getEpisodeSelectors(episodeNumber: number | undefined, episodeTitle?: string): string[] {
+    const selectors = [];
+    
+    if (episodeNumber !== undefined) {
+      // Max-specific selectors for numbered episodes
+      selectors.push(
+        `[class*="StyledTileWrapper-Fuse-Web-Play"]:has([class*="StyledTitleWrapperDefault"] span:contains("E${episodeNumber}:"))`,
+        `[class*="StyledTileWrapper-Fuse-Web-Play"]:has([class*="StyledTitleWrapperDefault"] span:contains("Episode ${episodeNumber}"))`,
+        `[class*="StyledTileWrapper"]:has([class*="StyledTitleWrapperDefault"] span:contains("E${episodeNumber}:"))`,
+        `[class*="StyledTileWrapper"]:has([class*="StyledTitleWrapperDefault"] span:contains("Episode ${episodeNumber}"))`
+      );
+    }
+    
+    if (episodeTitle) {
+      // Max-specific selectors for titles
+      const escapedTitle = episodeTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      selectors.push(
+        `[class*="StyledTileWrapper-Fuse-Web-Play"]:has([class*="StyledTitleWrapperDefault"] span:contains("${escapedTitle}"))`,
+        `[class*="StyledTileWrapper"]:has([class*="StyledTitleWrapperDefault"] span:contains("${escapedTitle}"))`
+      );
+    }
+    
+    // Fallback selectors for the episode container
+    selectors.push(
+      '[class*="StyledTileWrapper-Fuse-Web-Play"]',
+      '[class*="StyledTileWrapper"]'
+    );
+    
+    return selectors;
+  }
+
+  private async createEpisodeButton(episode: EpisodeItem): Promise<void> {
+    console.log(`Content: Creating button for episode ${episode.episodeNumber}`);
+    
+    // Get selectors for this episode
+    const selectors = this.getEpisodeSelectors(episode.episodeNumber, episode.title);
+    console.log(`Content: Trying selectors for episode ${episode.episodeNumber}`, selectors);
+    
+    // Try each selector
+    let targetElement: Element | null = null;
+    for (const selector of selectors) {
+      targetElement = document.querySelector(selector);
+      if (targetElement) break;
+    }
+    
+    if (!targetElement) {
+      console.log(`Content: Could not find element for episode ${episode.episodeNumber} with selectors:`, selectors);
+      return;
+    }
+    
+    // Create a container for the button
+    const container = document.createElement('div');
+    container.className = 'max-episode-add-button-container';
+    targetElement.appendChild(container);
+    
+    // Create and add the button
+    await this.createAddButton(episode as QueueItem, container, 'max');
+    console.log(`Content: Added button for episode ${episode.episodeNumber}`);
+  }
+
+  public async init(episodes: EpisodeItem[]): Promise<void> {
+    console.log('Content: Creating series button with data:', {
+      title: episodes[0]?.seriesTitle,
+      episodeCount: episodes.length
+    });
+    
+    // Create series button
+    await this.createSeriesButton(episodes as QueueItem[], 'max');
+    console.log('Content: Series button added to page');
+    
+    // Create episode buttons
+    console.log('Content: Creating individual episode buttons');
+    for (const episode of episodes) {
+      await this.createEpisodeButton(episode);
+    }
+  }
+}
