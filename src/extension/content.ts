@@ -379,8 +379,28 @@ export class ContentManager {
   }
 
   private detectService(url: string): ServiceConfig | null {
+    console.log('Content: Detecting service for URL:', url);
     const hostname = new URL(url).hostname;
-    return Object.entries(this.serviceConfigs).find(([domain]) => hostname.includes(domain))?.[1] ?? null;
+    console.log('Content: Hostname:', hostname);
+    
+    // Remove 'www.' prefix for consistent matching
+    const normalizedHostname = hostname.replace(/^www\./, '');
+    console.log('Content: Normalized hostname:', normalizedHostname);
+    
+    // Find the matching service
+    const matchingService = Object.entries(this.serviceConfigs).find(([domain]) => {
+      const matches = normalizedHostname === domain || normalizedHostname.endsWith('.' + domain);
+      console.log('Content: Checking domain:', domain, 'matches:', matches);
+      return matches;
+    });
+    
+    if (matchingService) {
+      console.log('Content: Found matching service:', matchingService[0]);
+    } else {
+      console.log('Content: No matching service found');
+    }
+    
+    return matchingService?.[1] ?? null;
   }
 
   /**

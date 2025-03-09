@@ -2,15 +2,21 @@ export type StreamingService = 'netflix' | 'youtube' | 'disneyplus' | 'primevide
 
 export interface QueueItem {
   id: string;
+  seriesId?: string;
+  seriesTitle?: string;
+  seasonNumber?: number;
+  episodeNumber?: number;
   title: string;
-  type: 'movie' | 'episode' | 'video';
+  type: 'episode' | 'movie';
   url: string;
   service: StreamingService;
   thumbnailUrl: string;
+  seriesThumbnailUrl?: string;
   addedAt: number;
-  order: number;
+  order?: number;
   duration?: number;
   progress?: number;
+  synopsis?: string;
 }
 
 export interface EpisodeItem extends QueueItem {
@@ -20,6 +26,7 @@ export interface EpisodeItem extends QueueItem {
   seasonNumber: number;
   episodeNumber: number;
   seriesThumbnailUrl: string;
+  order: number;
 }
 
 export interface SeriesData {
@@ -38,30 +45,38 @@ export interface ServiceConfig {
   name: StreamingService;
   urlPattern: string;
   titleSelector: string;
-  thumbnailSelector?: string;
-  durationSelector?: string;
-  completionDetector: {
-    type: 'time' | 'event' | 'url';
-    value: string;
-  };
-  isSeries?: () => boolean;
-  getSeriesData?: () => Promise<SeriesData | null>;
-  episodeInfo?: {
-    containerSelector: string;
-    titleSelector: string;
-    numberSelector?: string;
-    synopsisSelector?: string;
-    durationSelector?: string;
-    progressSelector?: string;
-  };
-  features?: {
-    expandList?: {
-      selector: string;
-      action: 'click' | 'scroll' | 'hover';
-      waitForSelector?: string;
-    };
+  thumbnailSelector: string;
+  durationSelector: string;
+  completionDetector: CompletionDetector;
+  isSeries: () => boolean | Promise<boolean>;
+  episodeInfo: EpisodeSelectors;
+  features?: ServiceFeatures;
+  getSeriesData?: () => Promise<SeriesData>;
+}
+
+export interface EpisodeSelectors {
+  containerSelector: string;
+  titleSelector: string;
+  numberSelector: string;
+  synopsisSelector: string;
+  durationSelector: string;
+  progressSelector: string;
+}
+
+export interface ServiceFeatures {
+  expandList?: {
+    selector: string;
+    action: 'click';
+    waitForSelector: string;
   };
 }
+
+export interface CompletionDetector {
+  type: 'time' | 'event' | 'url';
+  value: string;
+}
+
+export type ServiceName = 'netflix' | 'youtube' | 'disneyplus' | 'primevideo' | 'max';
 
 export interface QueueState {
   items: QueueItem[];

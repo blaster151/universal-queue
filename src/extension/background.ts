@@ -15,49 +15,85 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   }
 });
 
-const serviceConfigs: Record<string, ServiceConfig> = {
+const SERVICES: Record<string, ServiceConfig> = {
   'netflix.com': {
     name: 'netflix',
-    urlPattern: 'netflix.com/watch/*',
-    titleSelector: '.watch-title',
-    thumbnailSelector: '.watch-thumbnail',
-    durationSelector: '.watch-duration',
+    urlPattern: '*://*.netflix.com/*',
+    titleSelector: '.video-title h4',
+    thumbnailSelector: '.video-artwork img',
+    durationSelector: '.duration',
     completionDetector: {
       type: 'time',
       value: 'video.currentTime >= video.duration - 0.5'
+    },
+    isSeries: () => false,
+    episodeInfo: {
+      containerSelector: '.episode-item',
+      titleSelector: '.episode-title',
+      numberSelector: '.episode-number',
+      synopsisSelector: '.episode-synopsis',
+      durationSelector: '.episode-duration',
+      progressSelector: '.progress-indicator'
     }
   },
   'youtube.com': {
     name: 'youtube',
-    urlPattern: 'youtube.com/watch*',
-    titleSelector: 'h1.title',
-    thumbnailSelector: 'link[rel="image_src"]',
-    durationSelector: '.ytp-time-duration',
+    urlPattern: '*://*.youtube.com/*',
+    titleSelector: '.video-title',
+    thumbnailSelector: '.video-thumbnail img',
+    durationSelector: '.duration',
     completionDetector: {
       type: 'event',
-      value: 'video.ended'
+      value: 'onStateChange'
+    },
+    isSeries: () => false,
+    episodeInfo: {
+      containerSelector: '.episode-item',
+      titleSelector: '.episode-title',
+      numberSelector: '.episode-number',
+      synopsisSelector: '.episode-synopsis',
+      durationSelector: '.episode-duration',
+      progressSelector: '.progress-indicator'
     }
   },
   'disneyplus.com': {
     name: 'disneyplus',
-    urlPattern: 'disneyplus.com/video/*',
-    titleSelector: '.video-title',
-    thumbnailSelector: '.video-thumbnail',
-    durationSelector: '.video-duration',
+    urlPattern: '*://*.disneyplus.com/*',
+    titleSelector: '.title-field',
+    thumbnailSelector: '.artwork img',
+    durationSelector: '.duration-field',
     completionDetector: {
       type: 'time',
       value: 'video.currentTime >= video.duration - 0.5'
+    },
+    isSeries: () => false,
+    episodeInfo: {
+      containerSelector: '.episode-item',
+      titleSelector: '.episode-title',
+      numberSelector: '.episode-number',
+      synopsisSelector: '.episode-synopsis',
+      durationSelector: '.episode-duration',
+      progressSelector: '.progress-indicator'
     }
   },
   'primevideo.com': {
     name: 'primevideo',
-    urlPattern: 'primevideo.com/detail/*',
-    titleSelector: '.video-title',
-    thumbnailSelector: '.video-thumbnail',
-    durationSelector: '.video-duration',
+    urlPattern: '*://*.primevideo.com/*',
+    titleSelector: '.title-field',
+    thumbnailSelector: '.artwork img',
+    durationSelector: '.duration-field',
     completionDetector: {
       type: 'time',
       value: 'video.currentTime >= video.duration - 0.5'
+    },
+    isSeries: () => false,
+    episodeInfo: {
+      containerSelector: '.episode-item',
+      titleSelector: '.episode-title',
+      numberSelector: '.episode-number',
+      synopsisSelector: '.episode-synopsis',
+      durationSelector: '.episode-duration',
+      progressSelector: '.progress-indicator'
     }
   }
 };
@@ -232,7 +268,7 @@ async function handleRemoveFromQueue(item: any) {
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url) {
     const url = new URL(tab.url);
-    const service = Object.entries(serviceConfigs).find(([domain]) => 
+    const service = Object.entries(SERVICES).find(([domain]) => 
       url.hostname.includes(domain)
     );
 

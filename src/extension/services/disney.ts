@@ -114,10 +114,6 @@ export class DisneyPlusService extends BaseStreamingService {
     }
   };
 
-  public getConfig(): ServiceConfig {
-    return this.config;
-  }
-
   protected getEpisodeInfo(episode: Element): Partial<EpisodeItem> {
     console.log('DisneyPlusService: Getting episode info for element:', episode.getAttribute('data-item-id'));
     

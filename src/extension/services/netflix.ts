@@ -4,137 +4,18 @@ import { BaseStreamingService } from './base';
 export class NetflixService extends BaseStreamingService {
   private readonly SELECTORS = {
     series: {
-      container: '[data-uia="episode-list"], .episodeSelector',
-      episodeItem: [
-        // Primary episode selectors
-        '[data-uia="episode-item"]',
-        // Fallback to more specific episode containers
-        'li[class*="episode-item"]',
-        'div[class*="episode-item"]',
-        // Only use these if they contain episode-specific elements
-        '.titleCard--container:has([data-uia="episode-title"])',
-        '.titleCardList--container:has([data-uia="episode-title"])'
-      ].join(', '),
-      expandButton: [
-        // Netflix's section divider expand button
-        'button[data-uia="section-expand"]',
-        'button[aria-label="expand section"]',
-        '.section-divider button',
-        // Fallback selectors
-        'button[class*="section-expandButton"]',
-        'button[class*="expandButton"]',
-        // Legacy selectors
-        '[data-uia="expand-episodes"]',
-        'button[aria-label*="episodes"]',
-        'button[aria-label*="Episodes"]'
-      ].join(', '),
-      seriesIndicators: [
-        // Various ways to detect if it's a series
-        '.about-header h3.previewModal--section-header',
-        '.episode-list',
-        '.episodeSelector',
-        '[data-uia="episode-list"]',
-        '[data-uia="expand-episodes"]',
-        'button[aria-label*="episodes"]',
-        'button[aria-label*="Episodes"]',
-        // Genre indicators
-        'a[href*="/browse/m/genre/83"]', // TV Shows
-        '[data-uia="previewModal--tags-genre"] a[href*="TV"]', // Links containing TV
-        // Additional series indicators
-        '.previewModal--season-label',
-        '.seasonSelector',
-        '.episode-selector'
-      ].join(', '),
-      title: [
-        // Story art image alt text
-        '.playerModel--player__storyArt[alt]',
-        // About section header (multiple variations)
-        '.previewModal--section-header strong',
-        '.about-header .previewModal--section-header strong',
-        // Video title
-        '[data-uia="video-title"]',
-        // Player title treatment
-        '.previewModal--player-titleTreatment h4'
-      ].join(', '),
-      thumbnail: '.previewModal--boxart img, .hero-image-wrapper img, .playerModel--player__storyArt',
-      seasonInfo: [
-        // Various season info selectors
-        '.season-info',
-        '.previewModal--season-label',
-        '[data-uia="season-label"]',
-        '.seasonSelector button[aria-selected="true"]'
-      ].join(', '),
-      episodeTitle: [
-        // Primary title selectors
-        '[data-uia="episode-title"]',
-        '.titleCard-title',
-        '.episode-title h3',
-        // Fallback selectors
-        '[class*="episode-title"]',
-        '[class*="title"]:not([class*="synopsis"])',
-        // Netflix specific selectors for actual episode titles
-        '.episodeTitle',
-        '.title-text',
-        // Avoid synopsis text
-        'h3:not([class*="synopsis"])',
-        'h4:not([class*="synopsis"])'
-      ].join(', '),
-      episodeDescription: [
-        // Synopsis/description selectors
-        '[data-uia="episode-synopsis"]',
-        '.titleCard-synopsis',
-        '.episode-synopsis',
-        '[class*="synopsis"]'
-      ].join(', '),
-      episodeNumber: [
-        // Primary number selectors
-        '[data-uia="episode-number"]',
-        // Specific Netflix number selectors
-        '.titleCard-episode',
-        '.episode-number',
-        // Fallback selectors
-        '[class*="episode-number"]',
-        '[class*="episodeNumber"]'
-      ].join(', '),
-      episodeThumbnail: [
-        // Primary thumbnail selectors
-        'img.previewModal--boxart',
-        'img.titleCard-imageWrapper',
-        // Fallback selectors
-        'img[class*="boxart"]',
-        'img[class*="titleCard"]',
-        'img[alt*="Episode"]'
-      ].join(', '),
-      duration: [
-        // Netflix specific runtime selectors
-        '[data-uia="episode-runtime"]',
-        '[data-uia*="runtime"]',
-        '.titleCard-runtime',
-        '.episode-runtime',
-        '.previewModal-episodeRuntime',
-        // Generic duration selectors
-        '.duration',
-        '.runtime',
-        // Additional Netflix selectors
-        '[class*="duration"]',
-        '[class*="runtime"]',
-        // Time indicators
-        'time[datetime]',
-        'span[class*="time"]'
-      ].join(', '),
-      progress: [
-        // Various progress selectors
-        '[data-uia="episode-progress"]',
-        'progress.titleCard-progress',
-        '.progress-bar',
-        '.episode-progress'
-      ].join(', '),
-      showMoreButton: [
-        '[data-uia="expand-to-show-more"]',
-        'button[aria-label*="Show More"]',
-        'button[class*="showMore"]',
-        'button.episodeSelector-season-trigger'
-      ].join(', ')
+      container: '[data-uia="episode-item"]',
+      episodeItem: '[data-uia="episode-item"]',
+      expandButton: '[data-uia="expand-episodes"], button[aria-label*="episodes"]',
+      seriesIndicators: '[class*="episode-list"], [class*="season-list"]',
+      title: '[data-uia="video-title"]',
+      thumbnail: '.previewModal--boxart img, .hero-image-wrapper img',
+      seasonInfo: '[class*="season-info"]',
+      episodeTitle: '[data-uia="episode-title"]',
+      episodeDescription: '[class*="synopsis"]',
+      episodeDuration: '[data-uia="duration"]',
+      episodeProgress: '[class*="progress"]',
+      showMoreButton: '[data-uia="expand-episodes"]'
     }
   };
 
@@ -234,7 +115,7 @@ export class NetflixService extends BaseStreamingService {
     let url: string | undefined;
 
     // Try to get episode number first
-    const numberElement = episode.querySelector(this.SELECTORS.series.episodeNumber);
+    const numberElement = episode.querySelector(this.SELECTORS.series.episodeItem);
     if (numberElement) {
       const text = numberElement.textContent?.trim();
       const match = text?.match(/(\d+)/);
@@ -255,7 +136,7 @@ export class NetflixService extends BaseStreamingService {
     }
 
     // Try to get duration first (before title)
-    const durationElement = episode.querySelector(this.SELECTORS.series.duration);
+    const durationElement = episode.querySelector(this.SELECTORS.series.episodeDuration);
     console.log('NetflixService: Duration element found:', durationElement?.outerHTML);
     if (durationElement) {
       const text = durationElement.textContent?.trim();
@@ -269,7 +150,7 @@ export class NetflixService extends BaseStreamingService {
         }
       }
     } else {
-      console.log('NetflixService: No duration element found with selectors:', this.SELECTORS.series.duration);
+      console.log('NetflixService: No duration element found with selectors:', this.SELECTORS.series.episodeDuration);
       // Log all potential duration-like elements for debugging
       episode.querySelectorAll('[class*="duration"], [class*="runtime"], [class*="time"]').forEach(el => {
         console.log('NetflixService: Potential duration element:', el.outerHTML);
@@ -296,7 +177,7 @@ export class NetflixService extends BaseStreamingService {
     }
 
     // Try to get thumbnail
-    const thumbnailElement = episode.querySelector(this.SELECTORS.series.episodeThumbnail) as HTMLImageElement;
+    const thumbnailElement = episode.querySelector(this.SELECTORS.series.thumbnail) as HTMLImageElement;
     if (thumbnailElement?.src) {
       thumbnail = thumbnailElement.src;
       console.log('NetflixService: Found thumbnail:', thumbnail);
@@ -379,8 +260,9 @@ export class NetflixService extends BaseStreamingService {
     return {
       name: 'netflix',
       urlPattern: '*://*.netflix.com/*',
-      titleSelector: '.titleCard--container h3, .titleCard--container img[alt]',
-      thumbnailSelector: '.previewModal--boxart img, .hero-image-wrapper img',
+      titleSelector: this.SELECTORS.series.title,
+      thumbnailSelector: this.SELECTORS.series.thumbnail,
+      durationSelector: this.SELECTORS.series.episodeDuration,
       completionDetector: {
         type: 'event',
         value: 'video.ended'
@@ -410,6 +292,21 @@ export class NetflixService extends BaseStreamingService {
         });
         return isSeries;
       },
+      episodeInfo: {
+        containerSelector: this.SELECTORS.series.container,
+        titleSelector: this.SELECTORS.series.episodeTitle,
+        numberSelector: '[class*="episode-number"]',
+        synopsisSelector: this.SELECTORS.series.episodeDescription,
+        durationSelector: this.SELECTORS.series.episodeDuration,
+        progressSelector: this.SELECTORS.series.episodeProgress
+      },
+      features: {
+        expandList: {
+          selector: this.SELECTORS.series.expandButton,
+          action: 'click',
+          waitForSelector: this.SELECTORS.series.episodeItem
+        }
+      },
       getSeriesData: async () => {
         console.log('NetflixService: Getting series data');
         
@@ -437,7 +334,7 @@ export class NetflixService extends BaseStreamingService {
 
         const episodesData = episodes.map((episode, index) => {
           const { number, title, thumbnail, duration, url } = this.getEpisodeInfo(episode);
-          const progressElement = episode.querySelector(this.SELECTORS.series.progress);
+          const progressElement = episode.querySelector(this.SELECTORS.series.episodeProgress);
 
           const progress = progressElement ? parseFloat(progressElement.getAttribute('value') || '0') : 0;
           
@@ -494,30 +391,28 @@ export class NetflixService extends BaseStreamingService {
   protected readonly config: ServiceConfig = {
     name: 'netflix',
     urlPattern: '*://*.netflix.com/*',
-    titleSelector: '[data-uia="video-title"]',
-    thumbnailSelector: '.previewModal--boxart img, .hero-image-wrapper img, .playerModel--player__storyArt',
-    durationSelector: '[data-uia="controls-time-remaining"]',
+    titleSelector: this.SELECTORS.series.title,
+    thumbnailSelector: this.SELECTORS.series.thumbnail,
+    durationSelector: this.SELECTORS.series.episodeDuration,
     completionDetector: {
-      type: 'time',
-      value: 'video.currentTime >= video.duration - 0.5'
+      type: 'event',
+      value: 'video.ended'
     },
     isSeries: () => {
-      console.log('NetflixService: Checking if series');
-      const isSeries = document.querySelector(this.SELECTORS.series.episodeItem) !== null;
-      console.log('NetflixService: Is series?', isSeries);
-      return isSeries;
+      const url = window.location.href;
+      return url.includes('/browse') || url.includes('/title/');
     },
     episodeInfo: {
       containerSelector: this.SELECTORS.series.container,
       titleSelector: this.SELECTORS.series.episodeTitle,
       numberSelector: '[class*="episode-number"]',
-      synopsisSelector: '[class*="synopsis"]',
-      durationSelector: this.SELECTORS.series.duration,
-      progressSelector: this.SELECTORS.series.progress
+      synopsisSelector: this.SELECTORS.series.episodeDescription,
+      durationSelector: this.SELECTORS.series.episodeDuration,
+      progressSelector: this.SELECTORS.series.episodeProgress
     },
     features: {
       expandList: {
-        selector: '[data-uia="expand-episodes"], button[aria-label*="episodes"]',
+        selector: this.SELECTORS.series.expandButton,
         action: 'click',
         waitForSelector: this.SELECTORS.series.episodeItem
       }
@@ -525,67 +420,83 @@ export class NetflixService extends BaseStreamingService {
     getSeriesData: async () => {
       console.log('NetflixService: Getting series data');
       
+      // Try to expand episode list first
+      await this.expandEpisodeList();
+      
+      // Wait a bit longer after expansion to ensure all episodes are loaded
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
       // Get series metadata
-      const seriesTitle = this.getSeriesTitle();
-      const seriesThumbnail = document.querySelector(this.SELECTORS.series.thumbnail)?.getAttribute('src') || '';
-      const seasonInfo = document.querySelector(this.SELECTORS.series.seasonInfo)?.textContent?.trim();
+      const titleElement = document.querySelector(this.SELECTORS.series.title);
+      const seriesTitle = titleElement?.textContent?.trim() || document.title.split('|')[0].trim();
+      
+      const heroImage = document.querySelector(this.SELECTORS.series.thumbnail) as HTMLImageElement;
+      const seriesThumbnail = heroImage?.src || '';
+      
+      const seasonInfo = document.querySelector(this.SELECTORS.series.seasonInfo)?.textContent || '';
       const seasonNumber = seasonInfo ? parseInt(seasonInfo.match(/\d+/)?.[0] || '1') : 1;
+      
+      console.log('NetflixService: Series metadata:', { seriesTitle, seasonNumber });
 
-      const episodes = document.querySelectorAll(this.SELECTORS.series.episodeItem);
-      console.log('NetflixService: Found episodes:', episodes.length);
+      // Find valid episodes
+      const episodes = Array.from(document.querySelectorAll(this.SELECTORS.series.episodeItem));
+      console.log('NetflixService: Found', episodes.length, 'episodes');
       
       if (episodes.length === 0) {
         console.log('NetflixService: No episodes found');
-        return null;
+        return {
+          type: 'series',
+          id: window.location.pathname,
+          title: seriesTitle,
+          service: 'netflix',
+          thumbnailUrl: seriesThumbnail,
+          seasonNumber: 1,
+          episodeCount: 0,
+          episodes: [],
+          addedAt: Date.now()
+        };
       }
 
-      const episodesData = Array.from(episodes).map((episode, index) => {
-        const titleElement = episode.querySelector(this.SELECTORS.series.episodeTitle);
-        const thumbnailElement = episode.querySelector(this.SELECTORS.series.episodeThumbnail) as HTMLImageElement;
-        const durationElement = episode.querySelector(this.SELECTORS.series.duration);
+      const episodesData = episodes.map((episode, index) => {
+        const { number, title, thumbnail, duration, url } = this.getEpisodeInfo(episode);
+        const progressElement = episode.querySelector(this.SELECTORS.series.episodeProgress);
+
+        const progress = progressElement ? parseFloat(progressElement.getAttribute('value') || '0') : 0;
         
-        // Get episode-specific URL
-        const linkElement = episode.querySelector('a[href*="/watch/"]') as HTMLAnchorElement;
-        const episodeId = episode.getAttribute('data-episode-id') || 
-                         episode.querySelector('[data-episode-id]')?.getAttribute('data-episode-id');
-        const url = linkElement?.href || 
-                   (episodeId ? `https://www.netflix.com/watch/${episodeId}` : window.location.href);
+        const episodeNumber = number === -1 ? index + 1 : number;
         
-        console.log('NetflixService: Episode', index + 1, {
-          title: titleElement?.textContent,
-          url,
-          duration: durationElement?.textContent
+        console.log('NetflixService: Episode', episodeNumber, {
+          title,
+          duration,
+          progress,
+          thumbnail,
+          url
         });
         
         return {
-          id: Date.now().toString() + index,
+          id: url?.split('/').pop() || Date.now().toString() + index,
           seriesId: window.location.pathname,
           seriesTitle,
           seasonNumber,
-          episodeNumber: index + 1,
-          title: titleElement?.textContent?.trim() || `Episode ${index + 1}`,
+          episodeNumber,
+          title: title || `Episode ${episodeNumber}`,
           type: 'episode' as const,
-          url: url,
+          url: url || window.location.href,
           service: 'netflix' as const,
-          thumbnailUrl: thumbnailElement?.src || '',
+          thumbnailUrl: thumbnail || '',
           seriesThumbnailUrl: seriesThumbnail,
           addedAt: Date.now(),
           order: index,
-          duration: durationElement ? this.parseDuration(durationElement.textContent || '') : undefined
+          duration: duration,
+          progress: progress
         };
       });
 
-      console.log('NetflixService: Series data:', { 
-        seriesTitle, 
-        seasonNumber, 
-        episodeCount: episodesData.length 
-      });
-      
       return {
         type: 'series',
         id: window.location.pathname,
         title: seriesTitle,
-        service: 'netflix' as const,
+        service: 'netflix',
         thumbnailUrl: seriesThumbnail,
         seasonNumber,
         episodeCount: episodesData.length,

@@ -11,8 +11,9 @@ export abstract class BaseStreamingService {
     return new RegExp(this.config.urlPattern).test(url);
   }
 
-  public isSeries(): boolean {
-    return this.config.isSeries?.() || false;
+  public async checkIsSeries(): Promise<boolean> {
+    const result = await this.config.isSeries();
+    return result || false;
   }
 
   public async getSeriesData(): Promise<QueueItem[]> {

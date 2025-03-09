@@ -48,23 +48,25 @@ const STYLES = `
     position: absolute;
     top: 8px;
     right: 8px;
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
-    background: rgba(100, 108, 255, 0.9);
+    background: rgba(100, 108, 255, 0.95);
     color: white;
-    border: none;
+    border: 2px solid white;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 16px;
+    font-size: 20px;
     z-index: 9999;
     transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
   }
   .max-episode-add-button:hover {
     background: rgba(83, 91, 242, 1);
     transform: scale(1.1);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
   }
   .max-series-button {
     position: fixed;
@@ -90,9 +92,46 @@ const STYLES = `
   }
   .max-episode-add-button.in-queue {
     background: #4CAF50;
+    border-color: #E8F5E9;
   }
   .max-episode-add-button.in-queue:hover {
     background: #388E3C;
+  }
+  .episode-progress-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 2px;
+  }
+
+  .episode-progress-bar-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    background: #E50914;
+    border-radius: 2px;
+    transition: width 0.3s ease;
+  }
+
+  .episode-thumbnail-container {
+    position: relative;
+    width: 100%;
+    padding-bottom: 56.25%; /* 16:9 aspect ratio */
+    margin-bottom: 8px;
+  }
+
+  .episode-thumbnail {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 4px;
   }
 `;
 
@@ -156,6 +195,19 @@ export class UIManager {
         this.showSuccess(button);
       }
     });
+
+    // Add progress bar if progress exists
+    if (typeof item.progress === 'number') {
+      const progressBar = document.createElement('div');
+      progressBar.className = 'episode-progress-bar';
+
+      const progressFill = document.createElement('div');
+      progressFill.className = 'episode-progress-bar-fill';
+      progressFill.style.width = `${item.progress * 100}%`;
+
+      progressBar.appendChild(progressFill);
+      container.appendChild(progressBar);
+    }
 
     container.style.position = 'relative';
     container.appendChild(button);

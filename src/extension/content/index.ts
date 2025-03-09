@@ -34,15 +34,23 @@ class ContentScript {
     await new Promise(resolve => setTimeout(resolve, delay));
 
     const url = window.location.href;
-    const service = Object.entries(this.serviceConfigs).find(([domain]) => 
-      url.includes(domain)
-    );
+    console.log('ContentScript: Initializing for URL:', url);
+    
+    // Find matching service by checking if URL matches any service's domain
+    const service = Object.entries(this.serviceConfigs).find(([domain]) => {
+      // Special case for Disney+ which can have different subdomains
+      if (domain === 'disneyplus.com') {
+        return url.includes('disneyplus.com');
+      }
+      return url.includes(domain);
+    });
 
     if (!service) {
       console.log('DEBUG: No service config found for this domain');
       return;
     }
 
+    console.log('ContentScript: Found service:', service[0]);
     this.pageManager.setConfig(service[1]);
     await this.pageManager.initialize();
   }
