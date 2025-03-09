@@ -210,12 +210,14 @@ export class NetflixService extends BaseStreamingService {
     console.log('NetflixService: Found episodes without expanding:', episodes.length);
   }
 
-  private getEpisodeInfo(episode: Element): { number: number; title: string | undefined; thumbnail: string | undefined } {
+  private getEpisodeInfo(episode: Element): { number: number; title: string | undefined; thumbnail: string | undefined; duration: number | undefined; url: string | undefined } {
     console.log('NetflixService: Getting episode info for element:', episode.className);
     
     let number = -1;
     let title: string | undefined;
     let thumbnail: string | undefined;
+    let duration: number | undefined;
+    let url: string | undefined;
 
     // Try to get thumbnail
     const thumbnailElement = episode.querySelector(this.SELECTORS.series.episodeThumbnail) as HTMLImageElement;
@@ -245,90 +247,45 @@ export class NetflixService extends BaseStreamingService {
       }
     }
 
+    // Try to get duration
+    const durationElement = episode.querySelector(this.SELECTORS.series.duration);
+    if (durationElement) {
+      const text = durationElement.textContent?.trim();
+      if (text) {
+        // Parse duration in format "XX min" or "X h XX min"
+        const hours = text.match(/(\d+)\s*h/)?.[1];
+        const minutes = text.match(/(\d+)\s*min/)?.[1];
+        if (hours || minutes) {
+          duration = (parseInt(hours || '0') * 60 + parseInt(minutes || '0')) * 60; // Convert to seconds
+          console.log('NetflixService: Found duration:', duration, 'seconds');
+        }
+      }
+    }
+
     // Try to get title from dedicated element
     const titleElement = episode.querySelector(this.SELECTORS.series.episodeTitle);
     if (titleElement) {
       title = titleElement.textContent?.trim();
-      if (title) {
-        // Remove episode number prefix if present
-        title = title.replace(/^Episode \d+:?\s*/i, '').trim();
-        // Remove duration suffix if present
-        title = title.replace(/\s*\(\d+m\)\s*$/, '').trim();
-        console.log('NetflixService: Found and cleaned title:', title);
+      console.log('NetflixService: Found title:', title);
+    }
+
+    // Try to get episode URL
+    const linkElement = episode.querySelector('a[href*="/watch/"]') as HTMLAnchorElement;
+    if (linkElement?.href) {
+      url = linkElement.href;
+      console.log('NetflixService: Found episode URL:', url);
+    } else {
+      // If no direct link found, try to get the episode ID from data attributes
+      const episodeId = episode.getAttribute('data-episode-id') || 
+                       episode.querySelector('[data-episode-id]')?.getAttribute('data-episode-id');
+      if (episodeId) {
+        // Construct Netflix watch URL
+        url = `https://www.netflix.com/watch/${episodeId}`;
+        console.log('NetflixService: Constructed episode URL:', url);
       }
     }
 
-    // If no title found or title is just a year, try to get a better title from aria-label
-    if (!title || /^\d{4}$/.test(title)) {
-      const ariaLabel = episode.getAttribute('aria-label');
-      if (ariaLabel) {
-        // Try to extract everything after the episode number and before any duration
-        const match = ariaLabel.match(/Episode \d+[:.]\s*([^(]+)/i);
-        if (match?.[1]) {
-          const cleanTitle = match[1].trim();
-          // Only use if it's not just a year
-          if (!/^\d{4}$/.test(cleanTitle)) {
-            title = this.createShortTitle(cleanTitle);
-            console.log('NetflixService: Extracted title from aria-label:', title);
-          }
-        }
-      }
-    }
-
-    // If still no good title, try to create a title from the description
-    if (!title || /^\d{4}$/.test(title)) {
-      const descElement = episode.querySelector(this.SELECTORS.series.episodeDescription);
-      if (descElement) {
-        const desc = descElement.textContent?.trim();
-        if (desc) {
-          title = this.createShortTitle(desc);
-          console.log('NetflixService: Created title from description:', title);
-        }
-      }
-    }
-
-    // If still no title or title is just a year, use episode number
-    if (!title || /^\d{4}$/.test(title)) {
-      title = `Episode ${number === -1 ? 'Unknown' : number}`;
-      console.log('NetflixService: Using fallback title:', title);
-    }
-
-    return { number, title, thumbnail };
-  }
-
-  private createShortTitle(text: string): string {
-    // Split into parts by various delimiters
-    const parts = text.split(/[,.:;]/).map(part => part.trim());
-    
-    // Process each part to find the best title
-    for (const part of parts) {
-      // Skip if it's just a year
-      if (/^\d{4}$/.test(part)) continue;
-      
-      // Skip if it starts with a year
-      if (/^\d{4}[,.: ]/.test(part)) continue;
-      
-      // Skip if it's too short
-      if (part.length < 3) continue;
-      
-      // Found a good part, make it concise if needed
-      if (part.length > 40) {
-        // Try to find a natural break point
-        const breakPoint = part.lastIndexOf(' ', 37);
-        return breakPoint > 0 ? part.substring(0, breakPoint) + '...' : part.substring(0, 37) + '...';
-      }
-      
-      return part;
-    }
-    
-    // If we couldn't find a good part, use the first non-empty part
-    const firstNonEmpty = parts.find(part => part.length > 0);
-    if (firstNonEmpty) {
-      return firstNonEmpty.length > 40 ? firstNonEmpty.substring(0, 37) + '...' : firstNonEmpty;
-    }
-    
-    // Last resort: return the original text, truncated if needed
-    return text.length > 40 ? text.substring(0, 37) + '...' : text;
+    return { number, title, thumbnail, duration, url };
   }
 
   private async findEpisodes(): Promise<Element[]> {
@@ -446,12 +403,9 @@ export class NetflixService extends BaseStreamingService {
         }
 
         const episodesData = episodes.map((episode, index) => {
-          const { number, title, thumbnail } = this.getEpisodeInfo(episode);
-          const durationElement = episode.querySelector(this.SELECTORS.series.duration);
+          const { number, title, thumbnail, duration, url } = this.getEpisodeInfo(episode);
           const progressElement = episode.querySelector(this.SELECTORS.series.progress);
 
-          const duration = durationElement?.textContent?.trim() || '';
-          const durationInMinutes = duration ? parseInt(duration.replace('m', '')) : undefined;
           const progress = progressElement ? parseFloat(progressElement.getAttribute('value') || '0') : 0;
           
           const episodeNumber = number === -1 ? index + 1 : number;
@@ -460,7 +414,8 @@ export class NetflixService extends BaseStreamingService {
             title,
             duration,
             progress,
-            thumbnail
+            thumbnail,
+            url
           });
           
           return {
@@ -471,13 +426,13 @@ export class NetflixService extends BaseStreamingService {
             episodeNumber,
             title: title || `Episode ${episodeNumber}`,
             type: 'episode' as const,
-            url: window.location.href,
+            url: url || window.location.href,
             service: 'netflix' as const,
             thumbnailUrl: thumbnail || '',
             seriesThumbnailUrl: seriesThumbnail,
             addedAt: Date.now(),
             order: index,
-            duration: durationInMinutes,
+            duration: duration,
             progress: progress
           };
         });

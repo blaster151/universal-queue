@@ -1,4 +1,4 @@
-import { QueueState, QueueItem } from './types';
+import { QueueState, QueueItem, EpisodeItem } from './types';
 
 const STORAGE_KEY = 'universal_queue_state';
 
@@ -132,9 +132,75 @@ export class StorageService {
     }
   }
 
+  private findMatchingItem(newItem: QueueItem, existingItems: QueueItem[]): QueueItem | undefined {
+    if (newItem.type !== 'episode') return undefined;
+    const episodeItem = newItem as EpisodeItem;
+
+    return existingItems.find(item => {
+      if (item.type !== 'episode') return false;
+      const existingEpisode = item as EpisodeItem;
+      
+      return existingEpisode.seriesTitle === episodeItem.seriesTitle &&
+             existingEpisode.seasonNumber === episodeItem.seasonNumber &&
+             existingEpisode.episodeNumber === episodeItem.episodeNumber;
+    });
+  }
+
+  private mergeItems(existing: QueueItem, updated: QueueItem): QueueItem {
+    return {
+      ...existing,
+      ...updated,
+      // Preserve these fields from the existing item
+      id: existing.id,
+      addedAt: existing.addedAt,
+      order: existing.order,
+      // Only update URL if the new one is more specific (contains 'watch')
+      url: updated.url.includes('/watch/') ? updated.url : existing.url,
+      // Only update duration if the new one is defined
+      duration: updated.duration || existing.duration
+    };
+  }
+
   public async addItem(item: QueueItem): Promise<void> {
     const state = await this.getQueueState();
-    state.items.push(item);
+    const existingItem = this.findMatchingItem(item, state.items);
+
+    if (existingItem) {
+      // Update existing item
+      console.log('Storage: Updating existing item:', {
+        existing: existingItem,
+        updated: item
+      });
+      const updatedItems = state.items.map(stateItem => 
+        stateItem.id === existingItem.id ? this.mergeItems(stateItem, item) : stateItem
+      );
+      state.items = updatedItems;
+    } else {
+      // Add new item
+      console.log('Storage: Adding new item:', item);
+      state.items.push(item);
+    }
+
+    state.lastUpdated = Date.now();
+    await this.saveQueueState(state);
+  }
+
+  public async addItems(items: QueueItem[]): Promise<void> {
+    const state = await this.getQueueState();
+    
+    items.forEach(item => {
+      const existingItem = this.findMatchingItem(item, state.items);
+      if (existingItem) {
+        // Update existing item
+        state.items = state.items.map(stateItem => 
+          stateItem.id === existingItem.id ? this.mergeItems(stateItem, item) : stateItem
+        );
+      } else {
+        // Add new item
+        state.items.push(item);
+      }
+    });
+
     state.lastUpdated = Date.now();
     await this.saveQueueState(state);
   }

@@ -117,16 +117,35 @@ header h1 {
   font-size: 1.1rem;
 }
 
-.service {
+.item-meta {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.service, .duration {
   color: #888;
-  margin: 0;
   font-size: 0.9rem;
 }
 
-.episode-info {
-  color: #888;
-  margin: 0;
-  font-size: 0.9rem;
+.duration {
+  padding: 2px 6px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+}
+
+.queue-summary {
+  margin-top: 20px;
+  padding: 15px;
+  background: #2a2a2a;
+  border-radius: 8px;
+  color: #fff;
+}
+
+.queue-summary p {
+  margin: 5px 0;
+  font-size: 14px;
 }
 
 .play-button {
@@ -148,6 +167,16 @@ header h1 {
   padding: 2rem;
   color: #888;
   font-size: 1.1rem;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .service-logo {
@@ -170,5 +199,14 @@ header h1 {
 
   .service, .episode-info {
     color: #666;
+  }
+
+  .queue-summary {
+    background: #f0f0f0;
+    color: #213547;
+  }
+
+  .duration {
+    background: rgba(0, 0, 0, 0.05);
   }
 } 

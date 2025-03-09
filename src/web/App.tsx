@@ -12,6 +12,16 @@ const SERVICE_LOGOS: Record<string, string> = {
   other: 'https://cdn-icons-png.flaticon.com/512/3875/3875172.png'
 };
 
+const formatDuration = (seconds?: number): string => {
+  if (!seconds) return '';
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  return `${minutes}m`;
+};
+
 const getListStyle = (isDraggingOver: boolean) => ({
   background: isDraggingOver ? '#e9ecef' : '#f8f9fa',
   padding: '1rem',
@@ -30,6 +40,7 @@ const getItemStyle = (isDragging: boolean, draggableStyle: any) => ({
 
 function App() {
   const [items, setItems] = useState<QueueItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [newUrl, setNewUrl] = useState('');
   const storage = StorageService.getInstance();
 
@@ -38,9 +49,15 @@ function App() {
   }, []);
 
   const loadQueue = async () => {
-    const state = await storage.getQueueState();
-    console.log('DND: Initial queue loaded:', state.items);
-    setItems(state.items);
+    try {
+      const state = await storage.getQueueState();
+      console.log('DND: Initial queue loaded:', state.items);
+      setItems(state.items);
+    } catch (error) {
+      console.error('Error loading queue:', error);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleDragStart = (start: DragStart) => {
@@ -127,11 +144,16 @@ function App() {
               {episodeItem.seriesTitle} - S{episodeItem.seasonNumber}E{episodeItem.episodeNumber}
             </p>
           )}
-          <p className="service">{item.service}</p>
+          <div className="item-meta">
+            <span className="service">{item.service}</span>
+            {item.duration && <span className="duration">{formatDuration(item.duration)}</span>}
+          </div>
         </div>
       </div>
     );
   };
+
+  const totalDuration = items.reduce((total, item) => total + (item.duration || 0), 0);
 
   console.log('DND: Current items:', items);
 
@@ -165,43 +187,51 @@ function App() {
               style={getListStyle(snapshot.isDraggingOver)}
               className="queue-list"
             >
-              {items.length === 0 ? (
+              {isLoading ? (
+                <div className="empty-state">Loading Contents...</div>
+              ) : items.length === 0 ? (
                 <div className="empty-state">No items in queue</div>
               ) : (
-                items.map((item, index) => (
-                  <Draggable key={item.id} draggableId={item.id} index={index}>
-                    {(provided, snapshot) => (
-                      <div
-                        ref={provided.innerRef}
-                        {...provided.draggableProps}
-                        style={getItemStyle(
-                          snapshot.isDragging,
-                          provided.draggableProps.style
-                        )}
-                        className="queue-item"
-                      >
-                        <div 
-                          className="drag-handle"
-                          {...provided.dragHandleProps}
+                <>
+                  {items.map((item, index) => (
+                    <Draggable key={item.id} draggableId={item.id} index={index}>
+                      {(provided, snapshot) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          style={getItemStyle(
+                            snapshot.isDragging,
+                            provided.draggableProps.style
+                          )}
+                          className="queue-item"
                         >
-                          ⋮⋮
+                          <div 
+                            className="drag-handle"
+                            {...provided.dragHandleProps}
+                          >
+                            ⋮⋮
+                          </div>
+                          <img
+                            src={SERVICE_LOGOS[item.service] || SERVICE_LOGOS.other}
+                            alt={item.service}
+                            className="service-logo"
+                          />
+                          {renderQueueItem(item)}
+                          <button
+                            className="play-button"
+                            onClick={() => window.open(item.url, '_blank')}
+                          >
+                            Play
+                          </button>
                         </div>
-                        <img
-                          src={SERVICE_LOGOS[item.service] || SERVICE_LOGOS.other}
-                          alt={item.service}
-                          className="service-logo"
-                        />
-                        {renderQueueItem(item)}
-                        <button
-                          className="play-button"
-                          onClick={() => window.open(item.url, '_blank')}
-                        >
-                          Play
-                        </button>
-                      </div>
-                    )}
-                  </Draggable>
-                ))
+                      )}
+                    </Draggable>
+                  ))}
+                  <div className="queue-summary">
+                    <p>Total Duration: {formatDuration(totalDuration)}</p>
+                    <p>Items in Queue: {items.length}</p>
+                  </div>
+                </>
               )}
               {provided.placeholder}
             </div>
