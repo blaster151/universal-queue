@@ -27,7 +27,8 @@
     "*://*.netflix.com/*",
     "*://*.youtube.com/*",
     "*://*.disneyplus.com/*",
-    "*://*.primevideo.com/*"
+    "*://*.primevideo.com/*",
+    "*://localhost:*/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -42,6 +43,10 @@
         "*://*.primevideo.com/*"
       ],
       "js": ["content.js"]
+    },
+    {
+      "matches": ["*://localhost:*/*"],
+      "js": ["web-client-content-script.js"]
     }
   ]
 } 

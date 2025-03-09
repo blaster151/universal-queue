@@ -1,5 +1,5 @@
-import { ServiceConfig } from '@/common/types';
-import { StorageService } from '@/common/storage';
+import { ServiceConfig } from '../common/types';
+import { StorageService } from '../common/storage';
 
 // Keep the service worker alive with periodic alarms
 chrome.alarms.create('keepAlive', { periodInMinutes: 1 });

@@ -96,10 +96,31 @@ async function buildExtension() {
       outfile: contentScriptDest,
       format: 'iife',
       target: 'es2020',
-      platform: 'browser'
+      platform: 'browser',
+      alias: {
+        '@': resolve(__dirname, '../src')
+      }
     });
 
     console.log('Content script copied successfully');
+
+    // Build web client content script
+    const webClientContentScriptSource = path.join(__dirname, '../src/web/web-client-content-script.ts');
+    const webClientContentScriptDest = path.join(extensionDir, 'web-client-content-script.js');
+
+    await esbuild.build({
+      entryPoints: [webClientContentScriptSource],
+      bundle: true,
+      outfile: webClientContentScriptDest,
+      format: 'iife',
+      target: 'es2020',
+      platform: 'browser',
+      alias: {
+        '@': resolve(__dirname, '../src')
+      }
+    });
+
+    console.log('Web client content script built successfully');
 
     // Create icons directory and resize icons
     const iconsDir = resolve(extensionDir, 'icons');

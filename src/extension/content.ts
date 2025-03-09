@@ -1,4 +1,4 @@
-import { ServiceConfig, QueueItem } from '@/common/types';
+import { ServiceConfig, QueueItem, EpisodeItem } from '../common/types';
 
 // Import service configs
 import { NetflixService } from './services/netflix';
@@ -8,6 +8,7 @@ import { PrimeVideoService } from './services/primevideo';
 import { MaxService } from './services/max';
 import { HuluService } from './services/hulu';
 import { AppleTVService } from './services/appletv';
+import { StorageService } from '../common/storage';
 
 const serviceConfigs: Record<string, ServiceConfig> = {
   'netflix.com': new NetflixService().getConfig(),
@@ -138,6 +139,10 @@ export class ContentManager {
             episodeCount: seriesData.episodeCount
           });
           try {
+            // Get current queue state to check for existing episodes
+            const storage = StorageService.getInstance();
+            const queueState = await storage.getQueueState();
+            
             // Create series-wide button
             const seriesButton = this.createSeriesButton(seriesData);
             document.body.appendChild(seriesButton);
@@ -146,7 +151,14 @@ export class ContentManager {
             // Create individual episode buttons
             console.log('Content: Creating individual episode buttons');
             seriesData.episodes.forEach((episode) => {
-              const episodeButton = this.createEpisodeButton(episode);
+              // Check if episode is already in queue
+              const isQueued = queueState.items.some(item => 
+                item.type === 'episode' &&
+                (item as EpisodeItem).seriesTitle === episode.seriesTitle &&
+                (item as EpisodeItem).episodeNumber === episode.episodeNumber
+              );
+
+              const episodeButton = this.createEpisodeButton(episode, isQueued);
               // Try multiple selectors to find the episode element
               const selectors = [
                 `.titleCardList--container[aria-label*="Episode ${episode.episodeNumber}"]`,
@@ -167,16 +179,12 @@ export class ContentManager {
                   episodeNumber: episode.episodeNumber,
                   elementClasses: episodeElement.className,
                   elementId: episodeElement.id,
-                  ariaLabel: episodeElement.getAttribute('aria-label')
+                  ariaLabel: episodeElement.getAttribute('aria-label'),
+                  isQueued
                 });
 
                 // Find a good spot to insert the button
                 const buttonContainer = episodeElement.querySelector('.titleCard--metadataWrapper') || episodeElement;
-                console.log('Content: Button container:', {
-                  container: buttonContainer === episodeElement ? 'episode element' : 'metadata wrapper',
-                  classes: buttonContainer.className
-                });
-
                 buttonContainer.appendChild(episodeButton);
                 console.log('Content: Added button for episode', episode.episodeNumber);
               } else {
@@ -285,20 +293,14 @@ export class ContentManager {
     }
   }
 
-  private createEpisodeButton(episode: QueueItem): HTMLButtonElement {
+  private createEpisodeButton(episode: QueueItem, isQueued: boolean = false): HTMLButtonElement {
     const button = document.createElement('button');
-    button.textContent = 'Add Episode';
+    button.textContent = isQueued ? 'In Queue' : 'Add Episode';
     button.classList.add('universal-queue-button', 'episode-button');
-    button.style.cssText = `
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      z-index: 9999;
-      padding: 5px 10px;
-      font-size: 12px;
-      opacity: 0;
-      transition: opacity 0.2s;
-    `;
+    if (isQueued) {
+      button.classList.add('added');
+      button.disabled = true;
+    }
 
     // Add hover effect to show/hide button
     const parentElement = button.parentElement;
@@ -311,12 +313,14 @@ export class ContentManager {
       });
     }
 
-    // Add click handler
-    button.addEventListener('click', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      await this.addToQueue(episode, button);
-    });
+    // Add click handler only if not already queued
+    if (!isQueued) {
+      button.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        await this.addToQueue(episode, button);
+      });
+    }
 
     return button;
   }
