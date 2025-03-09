@@ -43,14 +43,67 @@ const STYLES = `
   .universal-queue-series-button:hover {
     background: #535bf2;
   }
+  /* Max-specific styles */
+  .max-episode-add-button {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: rgba(100, 108, 255, 0.9);
+    color: white;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    z-index: 9999;
+    transition: all 0.2s;
+  }
+  .max-episode-add-button:hover {
+    background: rgba(83, 91, 242, 1);
+    transform: scale(1.1);
+  }
+  .max-series-button {
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    background: rgba(100, 108, 255, 0.9);
+    color: white;
+    border: none;
+    border-radius: 20px;
+    padding: 8px 16px;
+    font-size: 14px;
+    cursor: pointer;
+    z-index: 9999;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    backdrop-filter: blur(4px);
+  }
+  .max-series-button:hover {
+    background: rgba(83, 91, 242, 1);
+    transform: scale(1.02);
+  }
+  .max-episode-add-button.in-queue {
+    background: #4CAF50;
+  }
+  .max-episode-add-button.in-queue:hover {
+    background: #388E3C;
+  }
 `;
 
 export class UIManager {
   private static instance: UIManager;
   private elements: HTMLElement[] = [];
   private styleSheet: HTMLStyleElement | null = null;
+  private storage: StorageService;
 
   private constructor() {
+    this.storage = StorageService.getInstance();
     this.injectStyles();
   }
 
@@ -69,16 +122,39 @@ export class UIManager {
     }
   }
 
-  public createAddButton(item: QueueItem, container: HTMLElement): void {
+  public async createAddButton(item: QueueItem, container: HTMLElement, service?: string): Promise<void> {
     const button = document.createElement('button');
-    button.className = 'universal-queue-add-button';
-    button.innerHTML = '+';
-    button.title = 'Add to Universal Queue';
+    const isMax = service === 'max';
+    
+    button.className = isMax ? 'max-episode-add-button' : 'universal-queue-add-button';
+    
+    // Check if item is already in queue
+    const state = await this.storage.getQueueState();
+    const isInQueue = state.items.some(i => i.id === item.id);
+    
+    if (isInQueue) {
+      button.classList.add('in-queue');
+      button.innerHTML = '✓';
+      button.title = 'Already in Queue';
+    } else {
+      button.innerHTML = '+';
+      button.title = 'Add to Universal Queue';
+    }
     
     button.addEventListener('click', async () => {
-      const storage = StorageService.getInstance();
-      await storage.addItem(item);
-      this.showSuccess(button);
+      if (isInQueue) {
+        await this.storage.removeItem(item.id);
+        button.classList.remove('in-queue');
+        button.innerHTML = '+';
+        button.title = 'Add to Universal Queue';
+        this.showSuccess(button, 'Removed');
+      } else {
+        await this.storage.addItem(item);
+        button.classList.add('in-queue');
+        button.innerHTML = '✓';
+        button.title = 'Already in Queue';
+        this.showSuccess(button);
+      }
     });
 
     container.style.position = 'relative';
@@ -86,18 +162,38 @@ export class UIManager {
     this.elements.push(button);
   }
 
-  public createSeriesButton(episodes: QueueItem[]): void {
+  public async createSeriesButton(episodes: QueueItem[], service?: string): Promise<void> {
     const button = document.createElement('button');
-    button.className = 'universal-queue-series-button';
-    button.innerHTML = `Add ${episodes.length} Unwatched Episodes to Queue`;
-    button.title = 'Add all unwatched episodes to Universal Queue';
+    const isMax = service === 'max';
+    
+    button.className = isMax ? 'max-series-button' : 'universal-queue-series-button';
+    
+    // Filter out episodes already in queue
+    const state = await this.storage.getQueueState();
+    const newEpisodes = episodes.filter(episode => 
+      !state.items.some(item => item.id === episode.id)
+    );
+    
+    if (newEpisodes.length === 0) {
+      button.innerHTML = '✓ All Episodes in Queue';
+      button.style.background = '#4CAF50';
+    } else {
+      button.innerHTML = `Add ${newEpisodes.length} Episodes to Queue`;
+    }
     
     button.addEventListener('click', async () => {
-      const storage = StorageService.getInstance();
-      for (const episode of episodes) {
-        await storage.addItem(episode);
+      if (newEpisodes.length === 0) return;
+      
+      for (const episode of newEpisodes) {
+        await this.storage.addItem(episode);
       }
-      this.showSuccess(button, `✓ Added ${episodes.length} Episodes to Queue`);
+      this.showSuccess(button, `✓ Added ${newEpisodes.length} Episodes`);
+      
+      // Update button state
+      setTimeout(() => {
+        button.innerHTML = '✓ All Episodes in Queue';
+        button.style.background = '#4CAF50';
+      }, 2000);
     });
 
     document.body.appendChild(button);

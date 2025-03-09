@@ -28,6 +28,7 @@
     "*://*.youtube.com/*",
     "*://*.disneyplus.com/*",
     "*://*.primevideo.com/*",
+    "*://*.max.com/*",
     "*://localhost:*/*"
   ],
   "background": {
@@ -40,7 +41,8 @@
         "*://*.netflix.com/*",
         "*://*.youtube.com/*",
         "*://*.disneyplus.com/*",
-        "*://*.primevideo.com/*"
+        "*://*.primevideo.com/*",
+        "*://*.max.com/*"
       ],
       "js": ["content.js"]
     },

@@ -75,7 +75,7 @@ export class PageManager {
     
     // Add series-wide button if this is a series
     if (this.config?.isSeries?.()) {
-      this.uiManager.createSeriesButton(itemsArray);
+      this.uiManager.createSeriesButton(itemsArray, this.config.name);
     }
     
     // Add individual video buttons
@@ -84,9 +84,17 @@ export class PageManager {
       videoElements.forEach(video => {
         const container = video.parentElement;
         if (container) {
-          this.uiManager.createAddButton(item, container);
+          this.uiManager.createAddButton(item, container, this.config?.name);
         }
       });
+
+      // For Max, also add buttons to episode cards
+      if (this.config?.name === 'max') {
+        const episodeCards = document.querySelectorAll(this.config.episodeInfo?.containerSelector || '');
+        episodeCards.forEach(card => {
+          this.uiManager.createAddButton(item, card as HTMLElement, 'max');
+        });
+      }
     });
   }
 
