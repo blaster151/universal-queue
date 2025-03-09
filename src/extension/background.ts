@@ -108,6 +108,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
 
     return true; // Keep the message channel open for async response
+  } else if (message.type === 'CLEAR_QUEUE') {
+    console.log('Background: Processing CLEAR_QUEUE message');
+
+    handleClearQueue()
+      .then(result => {
+        console.log('Background: Queue cleared:', result);
+        sendResponse(result);
+      })
+      .catch(error => {
+        console.error('Background: Error clearing queue:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+
+    return true; // Keep the message channel open for async response
   }
 
   return false;
@@ -224,6 +238,50 @@ async function handleRemoveFromQueue(item: any) {
     return { success: true };
   } catch (error) {
     console.error('Background: Error in handleRemoveFromQueue:', error instanceof Error ? error.message : String(error));
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
+async function handleClearQueue() {
+  console.log('Background: Handling clear queue');
+
+  try {
+    // Initialize storage service
+    const storage = StorageService.getInstance();
+    if (!storage) {
+      throw new Error('Failed to initialize storage service');
+    }
+
+    // Clear the queue
+    await storage.clearQueue();
+    console.log('Background: Queue cleared successfully');
+
+    // Notify any open popup/tabs - include localhost URLs for development
+    const tabs = await chrome.tabs.query({ 
+      url: [
+        chrome.runtime.getURL('/index.html'),
+        '*://localhost:*/*'
+      ] 
+    });
+    console.log('Background: Found React tabs:', tabs.length);
+
+    if (tabs.length > 0) {
+      for (const tab of tabs) {
+        console.log('Background: Notifying tab:', tab.id);
+        try {
+          await chrome.tabs.sendMessage(tab.id!, {
+            type: 'QUEUE_UPDATED'
+          });
+          console.log('Background: Tab notified successfully');
+        } catch (error) {
+          console.warn('Background: Error notifying tab:', error instanceof Error ? error.message : String(error));
+        }
+      }
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Background: Error in handleClearQueue:', error instanceof Error ? error.message : String(error));
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }

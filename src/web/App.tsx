@@ -143,10 +143,35 @@ function App() {
   const handleClearQueue = async () => {
     if (window.confirm('Are you sure you want to clear the entire queue?')) {
       try {
-        await storage.clearQueue();
-        setItems([]);
+        // Send message through web client content script
+        window.postMessage({ type: 'REQUEST_CLEAR_QUEUE' }, window.location.origin);
+
+        // Wait for response
+        const response = await new Promise<{ success: boolean; error?: string }>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Timeout waiting for clear queue response'));
+          }, 5000);
+
+          const handler = (event: MessageEvent) => {
+            if (event.origin !== window.location.origin) return;
+            if (event.data.type === 'CLEAR_QUEUE_RESPONSE') {
+              window.removeEventListener('message', handler);
+              clearTimeout(timeout);
+              resolve(event.data);
+            }
+          };
+
+          window.addEventListener('message', handler);
+        });
+
+        if (response.success) {
+          setItems([]);
+        } else {
+          throw new Error(response.error || 'Failed to clear queue');
+        }
       } catch (error) {
         console.error('Error clearing queue:', error);
+        alert('Failed to clear queue. Please try again.');
       }
     }
   };
