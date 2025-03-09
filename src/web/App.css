@@ -7,6 +7,9 @@
 header {
   margin-bottom: 2rem;
   text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 header h1 {
@@ -65,28 +68,20 @@ header h1 {
 .queue-item {
   display: flex;
   align-items: center;
-  padding: 12px;
-  margin-bottom: 8px;
-  background: #fff;
+  padding: 1rem;
+  margin-bottom: 1rem;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  transition: transform 0.2s, box-shadow 0.2s;
+  background: #fff;
+  min-width: 600px;
+  gap: 1rem;
 }
 
 .drag-handle {
   cursor: grab;
-  padding: 8px;
-  margin-right: 8px;
-  color: #888;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  user-select: none;
-}
-
-.drag-handle:active {
-  cursor: grabbing;
+  color: #999;
+  flex-shrink: 0;
+  width: 30px;
+  text-align: center;
 }
 
 .queue-item:hover {
@@ -109,19 +104,28 @@ header h1 {
 
 .item-info {
   flex: 1;
-  text-align: left;
+  min-width: 0;
+  margin-right: 1rem;
 }
 
 .item-info h3 {
   margin: 0 0 0.5rem 0;
-  font-size: 1.1rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.episode-info {
+  margin: 0 0 0.5rem 0;
+  color: #666;
+  font-size: 0.9rem;
 }
 
 .item-meta {
   display: flex;
-  gap: 12px;
-  align-items: center;
-  margin-top: 4px;
+  gap: 1rem;
+  color: #666;
+  font-size: 0.85rem;
 }
 
 .service, .duration {
@@ -149,17 +153,19 @@ header h1 {
 }
 
 .play-button {
+  margin-left: auto;
+  flex-shrink: 0;
   padding: 0.5rem 1rem;
-  background: #4CAF50;
+  background: #646cff;
   color: white;
   border: none;
   border-radius: 4px;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background 0.2s;
 }
 
 .play-button:hover {
-  background: #45a049;
+  background: #535bf2;
 }
 
 .empty-state {
@@ -180,11 +186,9 @@ header h1 {
 }
 
 .service-logo {
-  width: 24px;
-  height: 24px;
-  object-fit: contain;
-  margin-right: 12px;
-  border-radius: 4px;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
 }
 
 @media (prefers-color-scheme: light) {
@@ -209,4 +213,36 @@ header h1 {
   .duration {
     background: rgba(0, 0, 0, 0.05);
   }
+}
+
+.clear-queue-button {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  margin-left: 16px;
+}
+
+.clear-queue-button:hover {
+  background-color: #c82333;
+}
+
+.remove-button {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  margin-left: 8px;
+  opacity: 0.8;
+}
+
+.remove-button:hover {
+  opacity: 1;
+  background-color: #c82333;
 } 

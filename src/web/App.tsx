@@ -46,6 +46,18 @@ function App() {
 
   useEffect(() => {
     loadQueue();
+
+    // Listen for queue state updates
+    const handleQueueStateUpdate = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data.type === 'QUEUE_STATE_UPDATE' && event.data.state) {
+        console.log('React: Received queue state update:', event.data.state);
+        setItems(event.data.state.items);
+      }
+    };
+
+    window.addEventListener('message', handleQueueStateUpdate);
+    return () => window.removeEventListener('message', handleQueueStateUpdate);
   }, []);
 
   const loadQueue = async () => {
@@ -128,6 +140,26 @@ function App() {
     setNewUrl('');
   };
 
+  const handleClearQueue = async () => {
+    if (window.confirm('Are you sure you want to clear the entire queue?')) {
+      try {
+        await storage.clearQueue();
+        setItems([]);
+      } catch (error) {
+        console.error('Error clearing queue:', error);
+      }
+    }
+  };
+
+  const handleRemoveItem = async (itemId: string) => {
+    try {
+      await storage.removeItem(itemId);
+      setItems(items.filter(item => item.id !== itemId));
+    } catch (error) {
+      console.error('Error removing item:', error);
+    }
+  };
+
   const renderQueueItem = (item: QueueItem) => {
     const isEpisode = item.type === 'episode';
     const episodeItem = isEpisode ? item as EpisodeItem : null;
@@ -161,6 +193,14 @@ function App() {
     <div className="app">
       <header>
         <h1>Universal Queue</h1>
+        {items.length > 0 && (
+          <button 
+            onClick={handleClearQueue}
+            className="clear-queue-button"
+          >
+            Clear Queue
+          </button>
+        )}
       </header>
 
       <form onSubmit={handleSubmit} className="add-form">
@@ -222,6 +262,12 @@ function App() {
                             onClick={() => window.open(item.url, '_blank')}
                           >
                             Play
+                          </button>
+                          <button
+                            className="remove-button"
+                            onClick={() => handleRemoveItem(item.id)}
+                          >
+                            Remove
                           </button>
                         </div>
                       )}

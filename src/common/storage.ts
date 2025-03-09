@@ -211,4 +211,30 @@ export class StorageService {
     state.lastUpdated = Date.now();
     await this.saveQueueState(state);
   }
+
+  public async removeItem(itemId: string): Promise<void> {
+    console.log('Storage: Removing item:', itemId);
+    const state = await this.getQueueState();
+    
+    const index = state.items.findIndex(item => item.id === itemId);
+    if (index === -1) {
+      const error = `Item not found: ${itemId}`;
+      console.error('Storage:', error);
+      throw new Error(error);
+    }
+
+    state.items.splice(index, 1);
+    state.lastUpdated = Date.now();
+    await this.saveQueueState(state);
+    console.log('Storage: Item removed successfully');
+  }
+
+  public async clearQueue(): Promise<void> {
+    console.log('Storage: Clearing queue');
+    const state = await this.getQueueState();
+    state.items = [];
+    state.lastUpdated = Date.now();
+    await this.saveQueueState(state);
+    console.log('Storage: Queue cleared successfully');
+  }
 } 

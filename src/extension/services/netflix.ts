@@ -65,15 +65,19 @@ export class NetflixService extends BaseStreamingService {
         '.seasonSelector button[aria-selected="true"]'
       ].join(', '),
       episodeTitle: [
-        // Primary title selectors (short titles)
-        '[data-uia="episode-title"]:not([class*="synopsis"])',
-        '.titleCard-title_text:not([class*="synopsis"])',
-        // Netflix specific title selectors
-        '.episode-title h3:not([class*="synopsis"])',
-        '.titleCard h3:not([class*="synopsis"])',
+        // Primary title selectors
+        '[data-uia="episode-title"]',
+        '.titleCard-title',
+        '.episode-title h3',
         // Fallback selectors
-        'h3[class*="title"]:not([class*="synopsis"])',
-        'h4[class*="title"]:not([class*="synopsis"])'
+        '[class*="episode-title"]',
+        '[class*="title"]:not([class*="synopsis"])',
+        // Netflix specific selectors for actual episode titles
+        '.episodeTitle',
+        '.title-text',
+        // Avoid synopsis text
+        'h3:not([class*="synopsis"])',
+        'h4:not([class*="synopsis"])'
       ].join(', '),
       episodeDescription: [
         // Synopsis/description selectors
@@ -102,11 +106,21 @@ export class NetflixService extends BaseStreamingService {
         'img[alt*="Episode"]'
       ].join(', '),
       duration: [
-        // Various duration selectors
+        // Netflix specific runtime selectors
         '[data-uia="episode-runtime"]',
-        '.duration',
+        '[data-uia*="runtime"]',
+        '.titleCard-runtime',
         '.episode-runtime',
-        '.runtime'
+        '.previewModal-episodeRuntime',
+        // Generic duration selectors
+        '.duration',
+        '.runtime',
+        // Additional Netflix selectors
+        '[class*="duration"]',
+        '[class*="runtime"]',
+        // Time indicators
+        'time[datetime]',
+        'span[class*="time"]'
       ].join(', '),
       progress: [
         // Various progress selectors
@@ -219,14 +233,7 @@ export class NetflixService extends BaseStreamingService {
     let duration: number | undefined;
     let url: string | undefined;
 
-    // Try to get thumbnail
-    const thumbnailElement = episode.querySelector(this.SELECTORS.series.episodeThumbnail) as HTMLImageElement;
-    if (thumbnailElement?.src) {
-      thumbnail = thumbnailElement.src;
-      console.log('NetflixService: Found thumbnail:', thumbnail);
-    }
-
-    // Try to get episode number from dedicated element first
+    // Try to get episode number first
     const numberElement = episode.querySelector(this.SELECTORS.series.episodeNumber);
     if (numberElement) {
       const text = numberElement.textContent?.trim();
@@ -247,26 +254,52 @@ export class NetflixService extends BaseStreamingService {
       }
     }
 
-    // Try to get duration
+    // Try to get duration first (before title)
     const durationElement = episode.querySelector(this.SELECTORS.series.duration);
+    console.log('NetflixService: Duration element found:', durationElement?.outerHTML);
     if (durationElement) {
       const text = durationElement.textContent?.trim();
+      console.log('NetflixService: Raw duration text:', text);
       if (text) {
-        // Parse duration in format "XX min" or "X h XX min"
-        const hours = text.match(/(\d+)\s*h/)?.[1];
-        const minutes = text.match(/(\d+)\s*min/)?.[1];
-        if (hours || minutes) {
-          duration = (parseInt(hours || '0') * 60 + parseInt(minutes || '0')) * 60; // Convert to seconds
-          console.log('NetflixService: Found duration:', duration, 'seconds');
+        // Netflix uses minute integers with 'm' suffix
+        const minutes = parseInt(text.replace('m', ''));
+        if (!isNaN(minutes)) {
+          duration = minutes * 60; // Convert to seconds
+          console.log('NetflixService: Calculated duration:', duration, 'seconds');
         }
       }
+    } else {
+      console.log('NetflixService: No duration element found with selectors:', this.SELECTORS.series.duration);
+      // Log all potential duration-like elements for debugging
+      episode.querySelectorAll('[class*="duration"], [class*="runtime"], [class*="time"]').forEach(el => {
+        console.log('NetflixService: Potential duration element:', el.outerHTML);
+      });
     }
 
     // Try to get title from dedicated element
     const titleElement = episode.querySelector(this.SELECTORS.series.episodeTitle);
     if (titleElement) {
-      title = titleElement.textContent?.trim();
+      const rawTitle = titleElement.textContent?.trim();
+      // If the title is just a number, format it as "Episode X"
+      if (rawTitle && /^\d+$/.test(rawTitle)) {
+        title = `Episode ${rawTitle}`;
+      } else {
+        title = rawTitle;
+      }
       console.log('NetflixService: Found title:', title);
+    }
+
+    // If no title found but we have a number, use "Episode X"
+    if (!title && number !== -1) {
+      title = `Episode ${number}`;
+      console.log('NetflixService: Using generated title:', title);
+    }
+
+    // Try to get thumbnail
+    const thumbnailElement = episode.querySelector(this.SELECTORS.series.episodeThumbnail) as HTMLImageElement;
+    if (thumbnailElement?.src) {
+      thumbnail = thumbnailElement.src;
+      console.log('NetflixService: Found thumbnail:', thumbnail);
     }
 
     // Try to get episode URL
@@ -509,7 +542,20 @@ export class NetflixService extends BaseStreamingService {
       const episodesData = Array.from(episodes).map((episode, index) => {
         const titleElement = episode.querySelector(this.SELECTORS.series.episodeTitle);
         const thumbnailElement = episode.querySelector(this.SELECTORS.series.episodeThumbnail) as HTMLImageElement;
-        console.log('NetflixService: Episode', index + 1, 'title:', titleElement?.getAttribute('alt'));
+        const durationElement = episode.querySelector(this.SELECTORS.series.duration);
+        
+        // Get episode-specific URL
+        const linkElement = episode.querySelector('a[href*="/watch/"]') as HTMLAnchorElement;
+        const episodeId = episode.getAttribute('data-episode-id') || 
+                         episode.querySelector('[data-episode-id]')?.getAttribute('data-episode-id');
+        const url = linkElement?.href || 
+                   (episodeId ? `https://www.netflix.com/watch/${episodeId}` : window.location.href);
+        
+        console.log('NetflixService: Episode', index + 1, {
+          title: titleElement?.textContent,
+          url,
+          duration: durationElement?.textContent
+        });
         
         return {
           id: Date.now().toString() + index,
@@ -517,14 +563,15 @@ export class NetflixService extends BaseStreamingService {
           seriesTitle,
           seasonNumber,
           episodeNumber: index + 1,
-          title: titleElement?.getAttribute('alt')?.trim() || `Episode ${index + 1}`,
+          title: titleElement?.textContent?.trim() || `Episode ${index + 1}`,
           type: 'episode' as const,
-          url: window.location.href,
+          url: url,
           service: 'netflix' as const,
           thumbnailUrl: thumbnailElement?.src || '',
           seriesThumbnailUrl: seriesThumbnail,
           addedAt: Date.now(),
-          order: index
+          order: index,
+          duration: durationElement ? this.parseDuration(durationElement.textContent || '') : undefined
         };
       });
 
@@ -555,15 +602,8 @@ export class NetflixService extends BaseStreamingService {
   }
 
   protected parseDuration(duration: string): number | undefined {
-    // Netflix duration format: "1h 30m" or "30m"
-    const hours = duration.match(/(\d+)h/)?.[1];
-    const minutes = duration.match(/(\d+)m/)?.[1];
-    
-    if (hours && minutes) {
-      return parseInt(hours) * 3600 + parseInt(minutes) * 60;
-    } else if (minutes) {
-      return parseInt(minutes) * 60;
-    }
-    return undefined;
+    // Netflix uses minute integers with 'm' suffix
+    const minutes = parseInt(duration.replace('m', ''));
+    return !isNaN(minutes) ? minutes * 60 : undefined;
   }
 } 

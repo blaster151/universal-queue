@@ -90,6 +90,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
 
     return true; // Keep the message channel open for async response
+  } else if (message.type === 'REMOVE_FROM_QUEUE') {
+    console.log('Background: Processing REMOVE_FROM_QUEUE message:', {
+      itemType: message.item.type,
+      title: message.item.title,
+      episodeNumber: 'episodeNumber' in message.item ? message.item.episodeNumber : undefined
+    });
+
+    handleRemoveFromQueue(message.item)
+      .then(result => {
+        console.log('Background: Queue item removed:', result);
+        sendResponse(result);
+      })
+      .catch(error => {
+        console.error('Background: Error removing queue item:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+
+    return true; // Keep the message channel open for async response
   }
 
   return false;
@@ -162,6 +180,54 @@ async function handleAddToQueue(item: any) {
   }
 }
 
+async function handleRemoveFromQueue(item: any) {
+  console.log('Background: Handling remove from queue:', {
+    type: item.type,
+    title: item.title,
+    id: item.id
+  });
+
+  try {
+    // Initialize storage service
+    const storage = StorageService.getInstance();
+    if (!storage) {
+      throw new Error('Failed to initialize storage service');
+    }
+
+    // Remove the item
+    await storage.removeItem(item.id);
+    console.log('Background: Item removed successfully');
+
+    // Notify any open popup/tabs - include localhost URLs for development
+    const tabs = await chrome.tabs.query({ 
+      url: [
+        chrome.runtime.getURL('/index.html'),
+        '*://localhost:*/*'
+      ] 
+    });
+    console.log('Background: Found React tabs:', tabs.length);
+
+    if (tabs.length > 0) {
+      for (const tab of tabs) {
+        console.log('Background: Notifying tab:', tab.id);
+        try {
+          await chrome.tabs.sendMessage(tab.id!, {
+            type: 'QUEUE_UPDATED'
+          });
+          console.log('Background: Tab notified successfully');
+        } catch (error) {
+          console.warn('Background: Error notifying tab:', error instanceof Error ? error.message : String(error));
+        }
+      }
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Background: Error in handleRemoveFromQueue:', error instanceof Error ? error.message : String(error));
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
 // Listen for tab updates to detect when a video starts playing
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url) {
@@ -204,4 +270,23 @@ function injectCompletionDetector(config: ServiceConfig) {
     })();
   `;
   document.head.appendChild(script);
-} 
+}
+
+// Listen for storage changes
+chrome.storage.onChanged.addListener((changes, namespace) => {
+  if (namespace === 'local' && changes.universal_queue_state) {
+    console.log('Background: Queue state changed, notifying web app');
+    
+    // Notify all tabs running our web app
+    chrome.tabs.query({ url: '*://localhost:*/*' }, (tabs) => {
+      tabs.forEach(tab => {
+        if (tab.id) {
+          chrome.tabs.sendMessage(tab.id, {
+            type: 'QUEUE_STATE_UPDATE',
+            state: changes.universal_queue_state.newValue
+          }).catch(err => console.warn('Failed to send state to tab:', err));
+        }
+      });
+    });
+  }
+}); 

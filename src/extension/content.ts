@@ -256,12 +256,7 @@ export class ContentManager {
   }
 
   private async addToQueue(episode: QueueItem, button: HTMLButtonElement): Promise<void> {
-    console.log('Content: Adding to queue:', {
-      type: episode.type,
-      title: episode.title,
-      episodeNumber: 'episodeNumber' in episode ? episode.episodeNumber : undefined,
-      seriesTitle: 'seriesTitle' in episode ? episode.seriesTitle : undefined
-    });
+    console.log('Content: Adding to queue:', episode);
 
     try {
       // Disable button and show loading state
@@ -269,11 +264,14 @@ export class ContentManager {
       button.textContent = 'Adding...';
       console.log('Content: Button state updated to loading');
 
-      // Send message to background script
+      // Send complete episode data to background script
       console.log('Content: Sending message to background script');
       const response = await chrome.runtime.sendMessage({
         type: 'ADD_TO_QUEUE',
-        item: episode
+        item: {
+          ...episode,
+          addedAt: Date.now()
+        }
       });
       console.log('Content: Received response from background:', response);
 
@@ -293,34 +291,89 @@ export class ContentManager {
     }
   }
 
+  private async removeFromQueue(episode: QueueItem, button: HTMLButtonElement): Promise<void> {
+    console.log('Content: Removing from queue:', {
+      id: episode.id,
+      type: episode.type,
+      title: episode.title,
+      episodeNumber: 'episodeNumber' in episode ? episode.episodeNumber : undefined
+    });
+
+    try {
+      button.disabled = true;
+      button.textContent = 'Removing...';
+
+      // Get current queue state to find the correct item ID
+      const storage = StorageService.getInstance();
+      const state = await storage.getQueueState();
+      const existingItem = state.items.find(item => 
+        item.type === 'episode' &&
+        'episodeNumber' in item &&
+        'seriesTitle' in item &&
+        item.seriesTitle === (episode as EpisodeItem).seriesTitle &&
+        item.episodeNumber === (episode as EpisodeItem).episodeNumber
+      );
+
+      if (!existingItem) {
+        throw new Error('Item not found in queue');
+      }
+
+      const response = await chrome.runtime.sendMessage({
+        type: 'REMOVE_FROM_QUEUE',
+        item: existingItem
+      });
+
+      if (response?.success) {
+        button.textContent = 'Add Episode';
+        button.classList.remove('added');
+        button.disabled = false;
+        // Re-add the click handler for adding
+        button.addEventListener('click', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          await this.addToQueue(episode, button);
+        });
+      } else {
+        throw new Error(response?.error || 'Unknown error');
+      }
+    } catch (error) {
+      console.error('Content: Error removing from queue:', error instanceof Error ? error.message : String(error));
+      button.textContent = 'Error - Try Again';
+      button.classList.add('error');
+      button.disabled = false;
+    }
+  }
+
   private createEpisodeButton(episode: QueueItem, isQueued: boolean = false): HTMLButtonElement {
     const button = document.createElement('button');
     button.textContent = isQueued ? 'In Queue' : 'Add Episode';
     button.classList.add('universal-queue-button', 'episode-button');
     if (isQueued) {
       button.classList.add('added');
-      button.disabled = true;
     }
 
-    // Add hover effect to show/hide button
-    const parentElement = button.parentElement;
-    if (parentElement) {
-      parentElement.addEventListener('mouseenter', () => {
-        button.style.opacity = '1';
-      });
-      parentElement.addEventListener('mouseleave', () => {
-        button.style.opacity = '0';
-      });
-    }
+    // Add hover effect directly to the button instead of parent
+    button.addEventListener('mouseenter', () => {
+      if (isQueued) {
+        button.textContent = 'Remove';
+      }
+    });
+    button.addEventListener('mouseleave', () => {
+      if (isQueued) {
+        button.textContent = 'In Queue';
+      }
+    });
 
-    // Add click handler only if not already queued
-    if (!isQueued) {
-      button.addEventListener('click', async (e) => {
-        e.preventDefault();
-        e.stopPropagation();
+    // Add click handler
+    button.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (isQueued) {
+        await this.removeFromQueue(episode, button);
+      } else {
         await this.addToQueue(episode, button);
-      });
-    }
+      }
+    });
 
     return button;
   }
