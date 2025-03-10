@@ -139,18 +139,23 @@ export class UIManager {
   private static instance: UIManager;
   private elements: HTMLElement[] = [];
   private styleSheet: HTMLStyleElement | null = null;
-  private storage: StorageService;
+  private readonly storage: StorageService;
   private cleanupFunctions: Array<() => void>;
+  private readonly onAddEpisode: (episode: Element) => Promise<void>;
 
-  private constructor() {
+  private constructor(onAddEpisode: (episode: Element) => Promise<void>) {
     this.storage = StorageService.getInstance();
     this.cleanupFunctions = [];
+    this.onAddEpisode = onAddEpisode;
     this.injectStyles();
   }
 
-  public static getInstance(): UIManager {
+  public static getInstance(onAddEpisode?: (episode: Element) => Promise<void>): UIManager {
     if (!UIManager.instance) {
-      UIManager.instance = new UIManager();
+      if (!onAddEpisode) {
+        throw new Error('UIManager must be initialized with onAddEpisode callback');
+      }
+      UIManager.instance = new UIManager(onAddEpisode);
     }
     return UIManager.instance;
   }
@@ -386,5 +391,63 @@ export class UIManager {
     for (const episode of episodes) {
       await this.createEpisodeButton(episode);
     }
+  }
+
+  private createButtonContainer(episode: Element): HTMLElement {
+    const container = document.createElement('div');
+    container.className = 'uq-button-container';
+    
+    // Find the episode container (parent element that should hold the buttons)
+    const episodeContainer = episode.closest('.StyledTileWrapper-Fuse-Web-Play__sc-1ramr47-31');
+    if (!episodeContainer) {
+      console.warn('Could not find episode container for button placement');
+      return container;
+    }
+
+    // Check if container already exists
+    const existingContainer = episodeContainer.querySelector('.uq-button-container');
+    if (existingContainer) {
+      return existingContainer as HTMLElement;
+    }
+
+    // Add container to episode
+    episodeContainer.appendChild(container);
+    return container;
+  }
+
+  private createButton(episode: Element, isInQueue: boolean): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.className = `universal-queue-button episode-button${isInQueue ? ' added' : ''}`;
+    button.textContent = isInQueue ? 'In Queue' : 'Add Episode';
+    button.dataset.uqButton = `episode-${Date.now()}${Math.random().toString().slice(2)}`;
+
+    // Get or create button container for this episode
+    const container = this.createButtonContainer(episode);
+    container.appendChild(button);
+
+    return button;
+  }
+
+  async addEpisodeButton(episode: Element, isInQueue: boolean = false): Promise<HTMLButtonElement> {
+    const button = this.createButton(episode, isInQueue);
+    
+    if (!isInQueue) {
+      button.addEventListener('click', async () => {
+        try {
+          button.disabled = true;
+          await this.onAddEpisode(episode);
+          button.textContent = 'In Queue';
+          button.classList.add('added');
+        } catch (error) {
+          console.error('Failed to add episode:', error);
+          button.classList.add('error');
+          button.textContent = 'Error';
+        } finally {
+          button.disabled = false;
+        }
+      });
+    }
+
+    return button;
   }
 }

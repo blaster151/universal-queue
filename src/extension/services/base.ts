@@ -2,6 +2,10 @@ import { ServiceConfig, QueueItem } from '@/common/types';
 
 export abstract class BaseStreamingService {
   protected abstract readonly config: ServiceConfig;
+  private observer: MutationObserver | null = null;
+  private debounceTimer: NodeJS.Timeout | null = null;
+  private isSeriesCheckInProgress = false;
+  private isProcessingUpdates = false;
 
   public getConfig(): ServiceConfig {
     return this.config;
@@ -11,9 +15,87 @@ export abstract class BaseStreamingService {
     return new RegExp(this.config.urlPattern).test(url);
   }
 
+  private debounce(callback: () => void, delay: number = 500): void {
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+    }
+    this.debounceTimer = setTimeout(callback, delay);
+  }
+
+  public startObserving(callback: () => void): void {
+    // Stop any existing observer
+    this.stopObserving();
+
+    // Create new observer
+    this.observer = new MutationObserver((mutations) => {
+      // Skip if we're currently processing updates
+      if (this.isProcessingUpdates) {
+        return;
+      }
+
+      // Filter out mutations that are just our own button additions
+      const relevantMutations = mutations.filter(mutation => {
+        // Check added nodes
+        const addedNodes = Array.from(mutation.addedNodes);
+        const isOurButton = addedNodes.some(node => {
+          if (node instanceof HTMLElement) {
+            return node.hasAttribute('data-uq-button') || 
+                   node.querySelector('[data-uq-button]') !== null;
+          }
+          return false;
+        });
+        
+        return !isOurButton;
+      });
+
+      // Only proceed if we have relevant mutations
+      if (relevantMutations.length > 0) {
+        this.debounce(async () => {
+          this.isProcessingUpdates = true;
+          try {
+            await callback();
+          } finally {
+            this.isProcessingUpdates = false;
+          }
+        });
+      }
+    });
+
+    // Start observing with a configuration that watches for added nodes and subtree changes
+    this.observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+
+    console.log('[BaseStreamingService] Started observing DOM changes');
+  }
+
+  public stopObserving(): void {
+    if (this.observer) {
+      this.observer.disconnect();
+      this.observer = null;
+      console.log('[BaseStreamingService] Stopped observing DOM changes');
+    }
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+  }
+
   public async checkIsSeries(): Promise<boolean> {
-    const result = await this.config.isSeries();
-    return result || false;
+    // If a check is already in progress, return false
+    if (this.isSeriesCheckInProgress) {
+      console.log('[BaseStreamingService] Series check already in progress, skipping');
+      return false;
+    }
+
+    this.isSeriesCheckInProgress = true;
+    try {
+      const result = await this.config.isSeries();
+      return result || false;
+    } finally {
+      this.isSeriesCheckInProgress = false;
+    }
   }
 
   public async getSeriesData(): Promise<QueueItem[]> {

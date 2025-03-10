@@ -1,4 +1,4 @@
-import { ServiceConfig, EpisodeItem } from '@/common/types';
+import { QueueItem, StreamingService, ServiceConfig } from '@/common/types';
 import { BaseStreamingService } from './base';
 
 export class MaxService extends BaseStreamingService {
@@ -19,199 +19,201 @@ export class MaxService extends BaseStreamingService {
     }
   };
 
-  private async waitForContent(maxAttempts = 10, delayMs = 1000): Promise<boolean> {
-    console.log('MaxService: Waiting for content to load...');
+  readonly selectors = {
+    episodeItem: '.StyledTileLinkNormal-Fuse-Web-Play__sc-1ramr47-33[href*="/video/watch/"]',
+    episodeContainer: 'div[aria-label="Episodes"] #tileList',
+    buttonContainer: '.uq-button-container',
+    episodeTitle: '.StyledPrimaryTitle-Fuse-Web-Play__sc-1ramr47-25',
+    episodeNumber: '.StyledPrimaryTitle-Fuse-Web-Play__sc-1ramr47-25'
+  };
+
+  private async waitForContent(maxAttempts: number = 20): Promise<boolean> {
+    console.log('Max: Waiting for content to load...');
     
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      console.log(`MaxService: Attempt ${attempt}/${maxAttempts}`);
+    return new Promise((resolve) => {
+      let attempts = 0;
       
-      // Check for any content in the main area
-      const bodyText = document.body.textContent || '';
-      const hasContent = bodyText.trim().length > 0;
-      const hasH1 = document.querySelector('h1') !== null;
-      const hasButtons = document.querySelectorAll('button').length > 0;
-      
-      // Log all potential episode elements
-      const episodeElements = document.querySelectorAll(this.SELECTORS.series.episodeItem);
-      console.log('MaxService: Found potential episode elements:', Array.from(episodeElements).map(el => ({
-        className: el.className,
-        id: el.id,
-        ariaLabel: el.getAttribute('aria-label'),
-        text: el.textContent?.trim()
-      })));
-      
-      const episodeCount = episodeElements.length;
-      
-      console.log('MaxService: Content check:', {
-        hasContent,
-        hasH1,
-        buttonCount: document.querySelectorAll('button').length,
-        episodeCount,
-        h1Text: document.querySelector('h1')?.textContent
+      // Set up a MutationObserver to watch for changes
+      const observer = new MutationObserver((mutations) => {
+        const hasEpisodesContainer = document.querySelector('div[aria-label="Episodes"]');
+        const episodeCount = document.querySelectorAll(this.selectors.episodeItem).length;
+        
+        console.log('Max: Content check:', {
+          attempt: attempts + 1,
+          hasEpisodesContainer: !!hasEpisodesContainer,
+          episodeCount
+        });
+        
+        if (hasEpisodesContainer && episodeCount > 0) {
+          observer.disconnect();
+          console.log('Max: Content loaded successfully');
+          resolve(true);
+          return;
+        }
+        
+        attempts++;
+        if (attempts >= maxAttempts) {
+          observer.disconnect();
+          console.log('Max: Content failed to load after', maxAttempts, 'attempts');
+          resolve(false);
+        }
       });
       
-      if (hasContent && (hasH1 || hasButtons) && episodeCount > 0) {
-        console.log('MaxService: Content and episodes found!');
-        return true;
-      }
+      // Start observing
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
       
-      // Wait before next attempt
-      await new Promise(resolve => setTimeout(resolve, delayMs));
-    }
-    
-    console.log('MaxService: Timed out waiting for content');
-    return false;
+      // Also check immediately
+      const hasEpisodesContainer = document.querySelector('div[aria-label="Episodes"]');
+      const episodeCount = document.querySelectorAll(this.selectors.episodeItem).length;
+      if (hasEpisodesContainer && episodeCount > 0) {
+        observer.disconnect();
+        console.log('Max: Content already loaded');
+        resolve(true);
+      }
+    });
   }
 
   protected readonly config: ServiceConfig = {
-    name: 'max',
+    name: 'max' as StreamingService,
     urlPattern: '*://*.max.com/*',
-    titleSelector: this.SELECTORS.series.title,
-    thumbnailSelector: this.SELECTORS.series.heroImage,
-    durationSelector: this.SELECTORS.series.episodeMetadata + ' span:nth-child(2)',
+    titleSelector: '.StyledPrimaryTitle-Fuse-Web-Play__sc-1ramr47-25',
+    thumbnailSelector: 'img',
+    durationSelector: '.StyledMetadataContents-Fuse-Web-Play__sc-1k6k9dt-1',
     completionDetector: {
       type: 'time',
       value: 'video.currentTime >= video.duration - 0.5'
     },
     isSeries: async () => {
-      console.log('MaxService: Checking if series page...');
-      
-      // First check URL pattern
-      const isShowUrl = window.location.pathname.includes('/show/');
-      console.log('MaxService: URL check:', { isShowUrl, path: window.location.pathname });
-      
-      if (!isShowUrl) {
-        console.log('MaxService: Not a show URL');
+      // First check if we're on a show page
+      if (!window.location.pathname.includes('/show/')) {
+        console.log('Max: Not a show page');
         return false;
       }
 
       // Wait for content to load
       const contentLoaded = await this.waitForContent();
       if (!contentLoaded) {
-        console.log('MaxService: Content never loaded');
+        console.log('Max: Content failed to load');
         return false;
       }
 
-      // Check for required elements
-      const titleElement = document.querySelector(this.SELECTORS.series.title);
-      const seasonSelector = document.querySelector(this.SELECTORS.series.seasonSelector);
-      const episodeList = document.querySelector(this.SELECTORS.series.episodeList);
-      const episodeLinks = document.querySelectorAll(this.SELECTORS.series.episodeItem);
-      
-      console.log('MaxService: Found elements:', {
-        title: titleElement?.textContent,
-        seasonSelector: seasonSelector?.textContent,
-        episodeList: !!episodeList,
-        episodeCount: episodeLinks.length
-      });
-      
-      // Consider it a series page if we have a season selector or episode list
-      const isSeries = seasonSelector !== null || episodeList !== null || episodeLinks.length > 0;
-      console.log('MaxService: Is series page?', isSeries);
-      return isSeries;
-    },
-    episodeInfo: {
-      containerSelector: this.SELECTORS.series.episodeItem,
-      titleSelector: this.SELECTORS.series.episodeTitle,
-      numberSelector: '[class*="StyledEpisodeNumber"], [class*="episode-number"]',
-      synopsisSelector: this.SELECTORS.series.episodeDescription,
-      durationSelector: this.SELECTORS.series.episodeMetadata + ' span:nth-child(2)',
-      progressSelector: this.SELECTORS.series.progressBar
-    },
-    features: {
-      expandList: {
-        selector: '[class*="show-more"], button[class*="expand"]',
-        action: 'click',
-        waitForSelector: this.SELECTORS.series.episodeItem
-      }
+      // Check for episode items
+      const episodeCount = document.querySelectorAll(this.selectors.episodeItem).length;
+      console.log('Max: Found episode items:', episodeCount);
+
+      // Check for the episodes container
+      const hasEpisodesContainer = document.querySelector('div[aria-label="Episodes"]');
+      console.log('Max: Has episodes container:', !!hasEpisodesContainer);
+
+      return !!hasEpisodesContainer && episodeCount > 0;
     },
     getSeriesData: async () => {
-      console.log('MaxService: Getting series data...');
-      
-      // Wait for content to load
-      const contentLoaded = await this.waitForContent();
-      if (!contentLoaded) {
-        throw new Error('Content failed to load');
-      }
-
-      // Get series title - try multiple approaches
-      const titleElement = document.querySelector(this.SELECTORS.series.title);
-      let seriesTitle = titleElement?.textContent?.trim();
-      
-      if (!seriesTitle) {
-        // Try getting from document title
-        seriesTitle = document.title.split('|')[0].trim();
-        console.log('MaxService: Using document title:', seriesTitle);
-      }
-
-      if (!seriesTitle) {
-        throw new Error('Could not find series title');
-      }
-      console.log('MaxService: Found series title:', seriesTitle);
-
-      // Get series thumbnail from hero image
-      const heroImage = document.querySelector(this.SELECTORS.series.heroImage) as HTMLImageElement;
-      const seriesThumbnail = heroImage?.src || '';
-      console.log('MaxService: Found series thumbnail:', seriesThumbnail);
-
-      // Get current season number from season selector
-      const seasonSelector = document.querySelector(this.SELECTORS.series.seasonSelector);
-      const seasonText = seasonSelector?.textContent?.trim() || '';
-      const seasonNumber = seasonText ? parseInt(seasonText.match(/Season (\d+)/)?.[1] || '1') : 1;
-      console.log('MaxService: Current season:', seasonNumber);
-
-      // Find all episode elements
-      console.log('MaxService: Looking for episode elements');
-      const episodes = Array.from(document.querySelectorAll(this.SELECTORS.series.episodeItem));
-      console.log('MaxService: Found episodes:', episodes.length);
-
-      if (episodes.length === 0) {
-        console.log('MaxService: No episodes found');
-        throw new Error('No episodes found');
-      }
-
-      // Extract episode data
-      console.log('MaxService: Extracting episode data...');
-      const episodesData = episodes.map((episode, index) => {
-        console.log(`MaxService: Processing episode ${index + 1}`);
-        const info = this.getEpisodeInfo(episode);
-        console.log('MaxService: Episode info:', info);
-        
-        return {
-          ...info,
-          id: episode.getAttribute('href')?.split('/').pop() || Date.now().toString() + index,
-          seriesId: window.location.pathname,
-          seriesTitle,
-          seasonNumber,
-          type: 'episode' as const,
-          service: 'max' as const,
-          seriesThumbnailUrl: seriesThumbnail,
-          addedAt: Date.now(),
-          order: index
-        } as EpisodeItem;
-      });
-
-      console.log('MaxService: Finished processing all episodes:', {
-        totalEpisodes: episodesData.length,
-        seriesTitle,
-        seasonNumber
-      });
-
-      return {
-        type: 'series',
-        id: window.location.pathname,
-        title: seriesTitle,
-        service: 'max',
-        thumbnailUrl: seriesThumbnail,
-        seasonNumber,
-        episodeCount: episodesData.length,
-        episodes: episodesData,
-        addedAt: Date.now()
-      };
+      // Wait for content to load if needed
+      await this.waitForContent();
+      return this.getSeriesData();
+    },
+    episodeInfo: {
+      containerSelector: this.selectors.episodeContainer,
+      titleSelector: this.selectors.episodeTitle,
+      numberSelector: this.selectors.episodeNumber,
+      synopsisSelector: '.StyledDescription-Fuse-Web-Play__sc-1ramr47-28',
+      durationSelector: '.StyledMetadataContents-Fuse-Web-Play__sc-1k6k9dt-1',
+      progressSelector: '[class*="progress"]'
     }
   };
 
-  public getConfig(): ServiceConfig {
+  isSeries(): boolean {
+    // First check if we're on a show page
+    if (!window.location.pathname.includes('/show/')) {
+      console.log('Max: Not a show page');
+      return false;
+    }
+
+    // Check for episode items
+    const episodeCount = document.querySelectorAll(this.selectors.episodeItem).length;
+    console.log('Max: Found episode items:', episodeCount);
+
+    // Check for the episodes container
+    const hasEpisodesContainer = document.querySelector('div[aria-label="Episodes"]');
+    console.log('Max: Has episodes container:', !!hasEpisodesContainer);
+
+    return !!hasEpisodesContainer && episodeCount > 0;
+  }
+
+  async getSeriesData(): Promise<QueueItem[]> {
+    console.log('Max: Starting getSeriesData');
+    const episodes = Array.from(document.querySelectorAll<HTMLElement>(this.selectors.episodeItem));
+    console.log('Max: Found episodes:', {
+      count: episodes.length,
+      selector: this.selectors.episodeItem,
+      firstEpisode: episodes[0]?.outerHTML
+    });
+
+    const seriesId = window.location.pathname.split('/').pop() || '';
+    console.log('Max: Series ID:', seriesId);
+    const items: QueueItem[] = [];
+    
+    for (const episode of episodes) {
+      const ariaLabel = episode.getAttribute('aria-label') || '';
+      const href = episode.getAttribute('href') || '';
+      console.log('Max: Processing episode:', {
+        ariaLabel,
+        href,
+        html: episode.outerHTML
+      });
+
+      const match = ariaLabel.match(/Season (\d+), Episode (\d+): ([^.]+)/);
+      
+      if (!match) {
+        console.warn('Max: Could not parse episode info from aria-label:', ariaLabel);
+        // Try alternate parsing method
+        const titleEl = episode.querySelector(this.selectors.episodeTitle);
+        const numberEl = episode.querySelector(this.selectors.episodeNumber);
+        console.log('Max: Attempting alternate parsing:', {
+          titleElement: titleEl?.textContent,
+          numberElement: numberEl?.textContent
+        });
+        continue;
+      }
+
+      const [, season, episodeNum, title] = match;
+      const episodeId = href.split('/').pop() || '';
+      const thumbnailUrl = episode.querySelector('img')?.src || '';
+      
+      console.log('Max: Creating episode item:', {
+        episodeId,
+        title,
+        season,
+        episodeNum,
+        thumbnailUrl
+      });
+
+      items.push({
+        id: episodeId,
+        title: title.trim(),
+        episodeNumber: parseInt(episodeNum, 10),
+        seasonNumber: parseInt(season, 10),
+        url: href,
+        type: 'episode',
+        service: 'max' as StreamingService,
+        seriesId,
+        thumbnailUrl,
+        addedAt: Date.now()
+      });
+    }
+    
+    console.log('Max: Finished processing episodes:', {
+      totalFound: items.length,
+      items
+    });
+    
+    return items;
+  }
+
+  public getConfig() {
     return this.config;
   }
 
@@ -239,7 +241,7 @@ export class MaxService extends BaseStreamingService {
     return seconds;
   }
 
-  protected getEpisodeInfo(episode: Element): Partial<EpisodeItem> {
+  protected getEpisodeInfo(episode: Element): Partial<QueueItem> {
     console.log('MaxService: Getting episode info for element:', {
       elementId: episode.id,
       className: episode.className,
@@ -248,7 +250,7 @@ export class MaxService extends BaseStreamingService {
       text: episode.textContent?.trim()
     });
     
-    const info = super.extractEpisodeInfo(episode, this.config) as Partial<EpisodeItem>;
+    const info = super.extractEpisodeInfo(episode, this.config) as Partial<QueueItem>;
     info.type = 'episode';
     
     // Get the episode-specific URL from the href or data attribute
