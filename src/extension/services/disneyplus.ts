@@ -25,58 +25,40 @@ export class DisneyPlusService extends BaseStreamingService {
       type: 'time',
       value: 'video.currentTime >= video.duration - 0.5'
     },
-    isSeries: () => {
-      console.log('DisneyPlusService: Checking if series page...');
-      const url = window.location.href;
-      console.log('DisneyPlusService: Current URL:', url);
-
-      // Check URL pattern - either series or browse
-      const isSeriesUrl = url.includes('/series/');
-      const isBrowseUrl = url.includes('/browse/');
-      console.log('DisneyPlusService: URL check:', { isSeriesUrl, isBrowseUrl });
-
-      // Log all potential elements for debugging
-      console.log('DisneyPlusService: All h1 elements:', Array.from(document.querySelectorAll('h1')).map(el => ({
-        text: el.textContent,
-        className: el.className
-      })));
-
-      console.log('DisneyPlusService: All data-testid elements:', Array.from(document.querySelectorAll('[data-testid]')).map(el => ({
-        testId: el.getAttribute('data-testid'),
-        text: el.textContent,
-        className: el.className
-      })));
-
-      // Check for series elements
-      const hasTitle = !!document.querySelector('[data-testid="series-title"], h1');
-      const hasSeasonSelector = !!document.querySelector('[data-testid="dropdown-button"]');
-      const hasEpisodeContainer = !!document.querySelector('[data-testid="episode-container"]');
-      const hasEpisodeItems = document.querySelectorAll('[data-testid="set-item"]').length > 0;
-      const hasSeriesMetadata = !!document.querySelector('[data-testid="series-metadata"]');
-
-      // Additional checks for browse page
-      const hasSeriesHero = !!document.querySelector('[data-testid="series-hero"]');
-      const hasSeriesDetails = !!document.querySelector('[data-testid="series-details"]');
-      const hasSeriesDescription = !!document.querySelector('[data-testid="series-description"]');
-
-      console.log('DisneyPlusService: Page elements:', {
-        hasTitle,
-        hasSeasonSelector,
-        hasEpisodeContainer,
-        hasEpisodeItems,
-        hasSeriesMetadata,
-        hasSeriesHero,
-        hasSeriesDetails,
-        hasSeriesDescription,
-        episodeCount: document.querySelectorAll('[data-testid="set-item"]').length
-      });
-
-      // Consider it a series if we have any series-related elements
-      const isSeries = hasTitle || hasSeasonSelector || hasEpisodeContainer || hasEpisodeItems || 
-                      hasSeriesMetadata || hasSeriesHero || hasSeriesDetails || hasSeriesDescription;
-      console.log('DisneyPlusService: Is series page?', isSeries);
+    isSeries: async () => {
+      const maxRetries = 3;
+      const retryDelay = 1000; // 1 second delay between retries
       
-      return isSeries;
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        console.log(`[DisneyPlusService] Checking if current page is a series (attempt ${attempt + 1}/${maxRetries})...`);
+        
+        const url = window.location.href;
+        console.log(`[DisneyPlusService] Current URL: ${url}`);
+        
+        const hasSeriesPattern = url.includes('/series/') || url.includes('/browse/entity-');
+        console.log(`[DisneyPlusService] URL contains series pattern: ${hasSeriesPattern}`);
+        
+        const episodeElements = document.querySelectorAll('[data-testid="set-item"]');
+        console.log(`[DisneyPlusService] Found episode elements: ${episodeElements.length}`);
+        
+        const seasonSelector = document.querySelector('[data-testid="dropdown-button"]');
+        console.log(`[DisneyPlusService] Found season selector: ${!!seasonSelector}`);
+        
+        const isSeries = hasSeriesPattern && (episodeElements.length > 0 || !!seasonSelector);
+        console.log(`[DisneyPlusService] Current isSeries determination: ${isSeries}`);
+        
+        if (isSeries) {
+          return true;
+        }
+        
+        if (attempt < maxRetries - 1) {
+          console.log(`[DisneyPlusService] Waiting ${retryDelay}ms before next attempt...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
+      }
+      
+      console.log('[DisneyPlusService] Final isSeries determination: false');
+      return false;
     },
     episodeInfo: {
       containerSelector: '[data-testid="episode-container"]',
@@ -94,72 +76,68 @@ export class DisneyPlusService extends BaseStreamingService {
       }
     },
     getSeriesData: async () => {
-      console.log('DisneyPlusService: Getting series data...');
+      console.log("[DisneyPlusService] Getting series data...");
       
       // Get series title
-      const titleElement = document.querySelector(this.SELECTORS.series.title);
-      const seriesTitle = titleElement?.textContent?.trim() || document.title;
-      console.log('DisneyPlusService: Found series title:', seriesTitle);
+      const titleElement = document.querySelector('[data-testid="details-title-treatment"] img');
+      const title = titleElement?.getAttribute('alt') || '';
+      console.log("[DisneyPlusService] Found series title:", title);
 
       // Get series thumbnail
-      const heroImage = document.querySelector(this.SELECTORS.series.thumbnail) as HTMLImageElement;
-      const seriesThumbnail = heroImage?.src || '';
-      console.log('DisneyPlusService: Found series thumbnail:', seriesThumbnail);
+      const thumbnailUrl = titleElement?.getAttribute('src') || '';
 
-      // Get current season number from season selector
-      const seasonSelector = document.querySelector(this.SELECTORS.series.seasonSelector);
-      const seasonText = seasonSelector?.textContent?.trim() || '';
-      const seasonNumber = seasonText ? parseInt(seasonText.match(/Season (\d+)/)?.[1] || '1') : 1;
-      console.log('DisneyPlusService: Current season:', seasonNumber);
+      // Get episodes
+      const episodeElements = document.querySelectorAll('[data-testid="set-item"]');
+      console.log("[DisneyPlusService] Found", episodeElements.length, "episode elements");
 
-      // Find all episode elements
-      console.log('DisneyPlusService: Looking for episode elements');
-      const episodes = Array.from(document.querySelectorAll(this.SELECTORS.series.episodeItem));
-      console.log('DisneyPlusService: Found episodes:', episodes.length);
+      const episodes: EpisodeItem[] = [];
+      episodeElements.forEach((element, index) => {
+        try {
+          const titleElement = element.querySelector('[data-testid="standard-regular-list-item-title"]');
+          const episodeTitle = titleElement?.textContent || '';
+          console.log("[DisneyPlusService] Processing episode:", episodeTitle);
 
-      if (episodes.length === 0) {
-        console.log('DisneyPlusService: No episodes found');
-        throw new Error('No episodes found');
-      }
+          // Extract episode number from title (e.g. "1. Pilot" -> 1)
+          const episodeMatch = episodeTitle.match(/^(\d+)\./);
+          const episodeNumber = episodeMatch ? parseInt(episodeMatch[1]) : index + 1;
+          console.log("[DisneyPlusService] Extracted episode number:", episodeNumber);
 
-      // Extract episode data
-      console.log('DisneyPlusService: Extracting episode data...');
-      const episodesData = episodes.map((episode, index) => {
-        console.log(`DisneyPlusService: Processing episode ${index + 1}`);
-        const info = this.getEpisodeInfo(episode);
-        console.log('DisneyPlusService: Episode info:', info);
-        
-        return {
-          ...info,
-          id: episode.getAttribute('data-item-id') || Date.now().toString() + index,
-          seriesId: window.location.pathname,
-          seriesTitle,
-          seasonNumber,
-          type: 'episode' as const,
-          service: 'disneyplus' as const,
-          seriesThumbnailUrl: seriesThumbnail,
-          addedAt: Date.now(),
-          order: index
-        } as EpisodeItem;
+          const href = (element as HTMLAnchorElement).href;
+          const id = href.split('/').pop() || '';
+          
+          episodes.push({
+            id,
+            type: 'episode',
+            episodeNumber,
+            title: episodeTitle,
+            url: href,
+            seriesId: window.location.pathname,
+            seriesTitle: title,
+            seasonNumber: 1, // Default to season 1 if not found
+            service: 'disneyplus',
+            thumbnailUrl: '',
+            seriesThumbnailUrl: thumbnailUrl,
+            addedAt: Date.now(),
+            order: index
+          });
+        } catch (error) {
+          console.error("[DisneyPlusService] Error processing episode:", error);
+        }
       });
 
-      console.log('DisneyPlusService: Finished processing all episodes:', {
-        totalEpisodes: episodesData.length,
-        seriesTitle,
-        seasonNumber
-      });
+      console.log("[DisneyPlusService] Processed episodes:", episodes);
 
-      return {
+      return Promise.resolve({
         type: 'series',
         id: window.location.pathname,
-        title: seriesTitle,
+        title,
         service: 'disneyplus',
-        thumbnailUrl: seriesThumbnail,
-        seasonNumber,
-        episodeCount: episodesData.length,
-        episodes: episodesData,
+        thumbnailUrl,
+        seasonNumber: 1,
+        episodeCount: episodes.length,
+        episodes,
         addedAt: Date.now()
-      };
+      });
     }
   };
 

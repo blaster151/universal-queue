@@ -27,6 +27,7 @@ export class ContentManager {
   private originalPushState: typeof history.pushState;
   private originalReplaceState: typeof history.replaceState;
   private service: BaseStreamingService | null = null;
+  private cleanupFunctions: Array<() => void> = [];
 
   constructor(private readonly services: Record<string, BaseStreamingService>) {
     console.log('ContentManager initializing...');
@@ -35,6 +36,7 @@ export class ContentManager {
     this.originalReplaceState = history.replaceState;
     this.injectStyles();
     this.init();
+    this.setupCleanup();
   }
 
   private injectStyles(): void {
@@ -119,6 +121,24 @@ export class ContentManager {
     styleElement.setAttribute('data-source', 'universal-queue');
     styleElement.textContent = styles;
     document.head.appendChild(styleElement);
+  }
+
+  private addCleanup(fn: () => void) {
+    this.cleanupFunctions.push(fn);
+  }
+
+  private setupCleanup() {
+    // Clean up when the page is unloaded
+    const unloadHandler = () => this.dispose();
+    window.addEventListener('unload', unloadHandler);
+    this.addCleanup(() => window.removeEventListener('unload', unloadHandler));
+
+    // Clean up when the extension is disabled/removed
+    const portDisconnectHandler = () => this.dispose();
+    chrome.runtime.onConnect.addListener(port => {
+      port.onDisconnect.addListener(portDisconnectHandler);
+      this.addCleanup(() => port.onDisconnect.removeListener(portDisconnectHandler));
+    });
   }
 
   private async init(): Promise<void> {
@@ -474,6 +494,10 @@ export class ContentManager {
       console.log('Content: Restoring original replaceState');
       history.replaceState = this.originalReplaceState;
     }
+
+    // Run all cleanup functions
+    this.cleanupFunctions.forEach(fn => fn());
+    this.cleanupFunctions = [];
 
     console.log('Content: ContentManager disposed');
   }

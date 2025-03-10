@@ -140,9 +140,11 @@ export class UIManager {
   private elements: HTMLElement[] = [];
   private styleSheet: HTMLStyleElement | null = null;
   private storage: StorageService;
+  private cleanupFunctions: Array<() => void>;
 
   private constructor() {
     this.storage = StorageService.getInstance();
+    this.cleanupFunctions = [];
     this.injectStyles();
   }
 
@@ -159,6 +161,30 @@ export class UIManager {
       this.styleSheet.textContent = STYLES;
       document.head.appendChild(this.styleSheet);
     }
+  }
+
+  private addCleanupFunction(fn: () => void): void {
+    this.cleanupFunctions.push(fn);
+  }
+
+  public dispose() {
+    this.cleanupFunctions.forEach(fn => fn());
+    this.cleanupFunctions = [];
+    
+    // Also clean up any remaining elements
+    this.elements.forEach(el => el.remove());
+    this.elements = [];
+    
+    // Remove styles
+    if (this.styleSheet) {
+      this.styleSheet.remove();
+      this.styleSheet = null;
+    }
+  }
+
+  private addButtonListener(button: HTMLElement, handler: (e: MouseEvent) => void) {
+    button.addEventListener('click', handler);
+    this.addCleanupFunction(() => button.removeEventListener('click', handler));
   }
 
   public async createAddButton(item: QueueItem, container: HTMLElement, service?: string): Promise<void> {
@@ -180,7 +206,7 @@ export class UIManager {
       button.title = 'Add to Universal Queue';
     }
     
-    button.addEventListener('click', async () => {
+    const clickHandler = async () => {
       if (isInQueue) {
         await this.storage.removeItem(item.id);
         button.classList.remove('in-queue');
@@ -194,7 +220,9 @@ export class UIManager {
         button.title = 'Already in Queue';
         this.showSuccess(button);
       }
-    });
+    };
+
+    this.addButtonListener(button, clickHandler);
 
     // Add progress bar if progress exists
     if (typeof item.progress === 'number') {
@@ -233,7 +261,7 @@ export class UIManager {
       button.innerHTML = `Add ${newEpisodes.length} Episodes to Queue`;
     }
     
-    button.addEventListener('click', async () => {
+    const clickHandler = async () => {
       if (newEpisodes.length === 0) return;
       
       for (const episode of newEpisodes) {
@@ -246,8 +274,9 @@ export class UIManager {
         button.innerHTML = '✓ All Episodes in Queue';
         button.style.background = '#4CAF50';
       }, 2000);
-    });
+    };
 
+    this.addButtonListener(button, clickHandler);
     document.body.appendChild(button);
     this.elements.push(button);
   }
@@ -270,14 +299,8 @@ export class UIManager {
   }
 
   public cleanup(): void {
-    this.elements.forEach(element => {
-      try {
-        element.remove();
-      } catch (error) {
-        console.error('Error removing element:', error);
-      }
-    });
-    this.elements = [];
+    this.cleanupFunctions.forEach((fn: () => void) => fn());
+    this.cleanupFunctions = [];
   }
 
   public destroy(): void {

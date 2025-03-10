@@ -98,6 +98,127 @@ const SERVICES: Record<string, ServiceConfig> = {
   }
 };
 
+class BackgroundScript {
+  private storage = StorageService.getInstance();
+  private cleanupFunctions: Array<() => void> = [];
+  private ports: Map<number, chrome.runtime.Port> = new Map();
+
+  constructor() {
+    this.init();
+    this.setupCleanup();
+  }
+
+  private addCleanup(fn: () => void) {
+    this.cleanupFunctions.push(fn);
+  }
+
+  private setupCleanup() {
+    // Clean up when the extension is disabled/removed
+    chrome.runtime.onSuspend.addListener(() => this.dispose());
+  }
+
+  private init() {
+    // Handle connections from content scripts
+    chrome.runtime.onConnect.addListener(port => {
+      const tabId = port.sender?.tab?.id;
+      if (!tabId) return;
+
+      this.ports.set(tabId, port);
+      
+      const messageHandler = (msg: any) => this.handleMessage(msg, port);
+      port.onMessage.addListener(messageHandler);
+      
+      const disconnectHandler = () => {
+        port.onMessage.removeListener(messageHandler);
+        this.ports.delete(tabId);
+      };
+      
+      port.onDisconnect.addListener(disconnectHandler);
+      this.addCleanup(() => {
+        port.onMessage.removeListener(messageHandler);
+        port.onDisconnect.removeListener(disconnectHandler);
+      });
+    });
+
+    // Handle video progress tracking
+    chrome.tabs.onUpdated.addListener((_, changeInfo, tab) => {
+      if (changeInfo.status === 'complete' && tab.url) {
+        this.checkVideoProgress(tab);
+      }
+    });
+  }
+
+  private async checkVideoProgress(tab: chrome.tabs.Tab) {
+    const video = document.createElement('video');
+    const checkCompletion = () => {
+      if (video.currentTime / video.duration > 0.9) {
+        this.handleVideoComplete(tab.url!);
+      }
+    };
+
+    video.addEventListener('timeupdate', checkCompletion);
+    video.addEventListener('ended', () => this.handleVideoComplete(tab.url!));
+
+    this.addCleanup(() => {
+      video.removeEventListener('timeupdate', checkCompletion);
+      video.removeEventListener('ended', () => this.handleVideoComplete(tab.url!));
+    });
+  }
+
+  private async handleVideoComplete(url: string) {
+    try {
+      const state = await this.storage.getQueueState();
+      const items = state.items.map(item => 
+        item.url === url ? { ...item, completed: true } : item
+      );
+      await this.storage.saveQueueState({
+        items,
+        lastUpdated: Date.now()
+      });
+    } catch (error) {
+      console.error('Failed to mark item complete:', error);
+    }
+  }
+
+  private async handleMessage(message: any, port: chrome.runtime.Port) {
+    try {
+      switch (message.type) {
+        case 'ADD_TO_QUEUE':
+          const state = await this.storage.getQueueState();
+          await this.storage.saveQueueState({
+            items: [...state.items, message.item],
+            lastUpdated: Date.now()
+          });
+          break;
+        case 'REMOVE_FROM_QUEUE':
+          const currentState = await this.storage.getQueueState();
+          await this.storage.saveQueueState({
+            items: currentState.items.filter(item => item.id !== message.id),
+            lastUpdated: Date.now()
+          });
+          break;
+        // ... other message handlers ...
+      }
+    } catch (error) {
+      console.error('Error handling message:', error);
+      port.postMessage({ type: 'ERROR', error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  public dispose() {
+    // Close all ports
+    this.ports.forEach(port => port.disconnect());
+    this.ports.clear();
+
+    // Run all cleanup functions
+    this.cleanupFunctions.forEach(fn => fn());
+    this.cleanupFunctions = [];
+  }
+}
+
+// Initialize the background script
+new BackgroundScript();
+
 // Listen for messages from content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('Background: Received message:', {
@@ -264,26 +385,28 @@ async function handleRemoveFromQueue(item: any) {
   }
 }
 
-// Listen for tab updates to detect when a video starts playing
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.url) {
+// Listen for tab updates to detect when a video is complete
+chrome.tabs.onUpdated.addListener((_, changeInfo, tab) => {
+  if (changeInfo.status === 'complete' && tab.url && tab.id) {
     const url = new URL(tab.url);
     const service = Object.entries(SERVICES).find(([domain]) => 
       url.hostname.includes(domain)
     );
 
-    if (service) {
-      // Inject the completion detection script
-      chrome.scripting.executeScript({
-        target: { tabId },
-        func: injectCompletionDetector,
-        args: [service[1]]
-      });
-    }
+    if (!service) return;
+
+    // Inject the completion detection script
+    chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: injectCompletionDetector,
+      args: [service[0]]
+    });
+
+    handleVideoCompletion(tab.id);
   }
 });
 
-function injectCompletionDetector(config: ServiceConfig) {
+function injectCompletionDetector(domain: string) {
   const script = document.createElement('script');
   script.textContent = `
     (function() {
@@ -291,14 +414,14 @@ function injectCompletionDetector(config: ServiceConfig) {
       if (!video) return;
 
       const checkCompletion = () => {
-        if (${config.completionDetector.value}) {
+        if (${SERVICES[domain].completionDetector.value}) {
           chrome.runtime.sendMessage({ type: 'VIDEO_COMPLETED' });
         }
       };
 
-      if (config.completionDetector.type === 'time') {
+      if (SERVICES[domain].completionDetector.type === 'time') {
         video.addEventListener('timeupdate', checkCompletion);
-      } else if (config.completionDetector.type === 'event') {
+      } else if (SERVICES[domain].completionDetector.type === 'event') {
         video.addEventListener('ended', () => {
           chrome.runtime.sendMessage({ type: 'VIDEO_COMPLETED' });
         });
