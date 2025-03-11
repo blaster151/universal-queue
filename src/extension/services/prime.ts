@@ -1,50 +1,50 @@
 import { QueueItem, StreamingService, ServiceConfig } from '@/common/types';
 import { BaseStreamingService } from './base';
 
-export class HuluService extends BaseStreamingService {
+export class PrimeVideoService extends BaseStreamingService {
   readonly selectors = {
-    episodeItem: 'div[data-testid="seh-tile"]',
-    episodeContainer: 'div[data-testid="visible-collection-impression"]',
+    episodeItem: '[data-testid="episode-list-item"]',
+    episodeContainer: 'div#tab-content-episodes',
     buttonContainer: '.uq-button-container',
-    episodeTitle: '[data-testid="seh-tile-content-title"]',
-    episodeNumber: '[data-testid="episode-number"], [class*="EpisodeNumber"], h3._6bueqf6',
-    episodeDescription: '[data-testid="standard-emphasis-tile-description"]',
-    thumbnail: '[data-testid="image"]',
-    watchButton: '[data-testid="watchaction-btn"]',
-    duration: '[data-testid="episode-duration"], [class*="Duration"]',
-    progressBar: '[data-testid="episode-progress"], [class*="progress"], [role="progressbar"]'
+    episodeTitle: '[data-testid="seh-tile-content-title"], .P1uAb6',  // The actual episode title
+    episodeNumber: '[data-testid="episode-number"], ._36qUej', // Contains "S1 E1 - Title"
+    episodeDescription: '[data-testid="episode-synopsis"], ._3qsVvm',
+    thumbnail: '[data-testid="episode-thumbnail"], img.FHb5CR',
+    watchButton: '[data-testid="episodes-playbutton"]',
+    duration: '[data-testid="episode-runtime"]',
+    progressBar: '[data-testid="episode-progress"], [role="progressbar"], ._1RqH1v'
   };
 
   protected readonly config: ServiceConfig = {
-    name: 'hulu' as StreamingService,
-    urlPattern: '*://*.hulu.com/*',
-    titleSelector: '[data-testid="seh-tile-content-title"]',
-    thumbnailSelector: '[data-testid="image"]',
-    durationSelector: '', // Hulu doesn't show duration on series pages
+    name: 'primevideo' as StreamingService,
+    urlPattern: '*://*.amazon.com/*/video/*, *://*.amazon.com/gp/video/detail/*',
+    titleSelector: '.P1uAb6',
+    thumbnailSelector: 'img.FHb5CR',
+    durationSelector: '[data-testid="episode-runtime"]',
     completionDetector: {
       type: 'time',
       value: 'video.currentTime >= video.duration - 0.5'
     },
     isSeries: async () => {
-      // First check if we're on a series page
-      if (!window.location.pathname.includes('/series/')) {
-        console.log('Hulu: Not a series page');
+      // First check if we're on a video detail page
+      if (!window.location.pathname.includes('/video/detail/')) {
+        console.log('Prime: Not a video detail page');
         return false;
       }
 
       // Check for episode items
       const episodeCount = document.querySelectorAll(this.selectors.episodeItem).length;
-      console.log('Hulu: Found episode items:', episodeCount);
+      console.log('Prime: Found episode items:', episodeCount);
 
       // Check for the episodes container
       const hasEpisodesContainer = document.querySelector(this.selectors.episodeContainer);
-      console.log('Hulu: Has episodes container:', !!hasEpisodesContainer);
+      console.log('Prime: Has episodes container:', !!hasEpisodesContainer);
 
       return !!hasEpisodesContainer && episodeCount > 0;
     },
     getSeriesData: async () => {
       const episodes = await this.getSeriesData();
-      const seriesId = window.location.pathname.split('/').pop() || 'unknown';
+      const seriesId = window.location.pathname.split('/detail/')[1]?.split('?')[0] || 'unknown';
       const title = document.title.split(' - ')[0] || 'Unknown Series';
       const episodeCount = episodes.length;
       const seriesThumbnailUrl = document.querySelector(this.selectors.thumbnail)?.getAttribute('src') || '';
@@ -67,7 +67,7 @@ export class HuluService extends BaseStreamingService {
         type: 'series',
         id: seriesId,
         title,
-        service: 'hulu' as StreamingService,
+        service: 'primevideo' as StreamingService,
         episodes: episodeItems,
         seasonNumber: 1,
         episodeCount,
@@ -81,38 +81,40 @@ export class HuluService extends BaseStreamingService {
       titleSelector: this.selectors.episodeTitle,
       numberSelector: this.selectors.episodeNumber,
       synopsisSelector: this.selectors.episodeDescription,
-      durationSelector: '',
-      progressSelector: ''
+      durationSelector: this.selectors.duration,
+      progressSelector: this.selectors.progressBar
     }
   };
 
   isSeries(): boolean {
-    // First check if we're on a series page
-    if (!window.location.pathname.includes('/series/')) {
-      console.log('Hulu: Not a series page');
+    // First check if we're on a video detail page
+    if (!window.location.pathname.includes('/video/detail/')) {
+      console.log('Prime: Not a video detail page');
       return false;
     }
 
     // Check for episode items
     const episodeCount = document.querySelectorAll(this.selectors.episodeItem).length;
-    console.log('Hulu: Found episode items:', episodeCount);
+    console.log('Prime: Found episode items:', episodeCount);
 
     // Check for the episodes container
     const hasEpisodesContainer = document.querySelector(this.selectors.episodeContainer);
-    console.log('Hulu: Has episodes container:', !!hasEpisodesContainer);
+    console.log('Prime: Has episodes container:', !!hasEpisodesContainer);
 
     return !!hasEpisodesContainer && episodeCount > 0;
   }
 
   async getSeriesData(): Promise<QueueItem[]> {
-    console.log('Hulu: Starting getSeriesData');
+    console.log('Prime: Starting getSeriesData');
     const episodes = Array.from(document.querySelectorAll<HTMLElement>(this.selectors.episodeItem));
-    console.log('Hulu: Found episodes:', {
+    console.log('Prime: Found episodes:', {
       count: episodes.length,
       selector: this.selectors.episodeItem,
       firstEpisode: episodes[0]?.outerHTML
     });
 
+    const seriesId = window.location.pathname.split('/detail/')[1]?.split('?')[0] || '';
+    console.log('Prime: Series ID:', seriesId);
     const items: QueueItem[] = [];
     
     for (const episode of episodes) {
@@ -120,9 +122,10 @@ export class HuluService extends BaseStreamingService {
       const numberElement = episode.querySelector(this.selectors.episodeNumber);
       const thumbnailElement = episode.querySelector(this.selectors.thumbnail) as HTMLImageElement;
       const watchButton = episode.querySelector(this.selectors.watchButton) as HTMLAnchorElement;
+      const durationElement = episode.querySelector(this.selectors.duration);
 
       if (!titleElement || !numberElement || !watchButton) {
-        console.warn('Hulu: Missing required elements for episode');
+        console.warn('Prime: Missing required elements for episode');
         continue;
       }
 
@@ -130,36 +133,40 @@ export class HuluService extends BaseStreamingService {
       const numberText = numberElement.textContent?.trim() || '';
       const thumbnailUrl = thumbnailElement?.src || '';
       const href = watchButton.getAttribute('href') || '';
+      const duration = durationElement?.textContent?.trim() || '';
       
-      // Extract episode number from text like "episode 1"
-      const episodeMatch = numberText.match(/episode (\d+)/i);
-      const episodeNumber = episodeMatch ? parseInt(episodeMatch[1]) : undefined;
+      // Extract season and episode numbers from text like "S1 E1 - Title"
+      const episodeMatch = numberText.match(/S(\d+)\s*E(\d+)/i);
+      const seasonNumber = episodeMatch ? parseInt(episodeMatch[1]) : 1;
+      const episodeNumber = episodeMatch ? parseInt(episodeMatch[2]) : null;
       
-      console.log('Hulu: Processing episode:', {
+      console.log('Prime: Processing episode:', {
         title,
         numberText,
+        seasonNumber,
         episodeNumber,
+        duration,
         thumbnailUrl,
         href
       });
 
       if (!episodeNumber) {
-        console.warn('Hulu: Could not parse episode number from:', numberText);
+        console.warn('Prime: Could not parse episode number from:', numberText);
         continue;
       }
 
-      const seriesId = window.location.pathname.split('/').pop() || 'unknown';
+      const seriesId = window.location.pathname.split('/detail/')[1]?.split('?')[0] || 'unknown';
       const seriesTitle = document.title.split(' - ')[0] || 'Unknown Series';
       const seriesThumbnailUrl = document.querySelector(this.selectors.thumbnail)?.getAttribute('src') || '';
 
       items.push({
-        id: href.split('/').pop() || '',
+        id: href.split('/ref=')[0].split('/').pop() || '',
         title: title.trim(),
         episodeNumber,
-        seasonNumber: 1,
+        seasonNumber,
         url: new URL(href, window.location.origin).href,
         type: 'episode' as const,
-        service: 'hulu' as StreamingService,
+        service: 'primevideo' as StreamingService,
         seriesId,
         seriesTitle,
         seriesThumbnailUrl,
@@ -169,7 +176,7 @@ export class HuluService extends BaseStreamingService {
       });
     }
     
-    console.log('Hulu: Finished processing episodes:', {
+    console.log('Prime: Finished processing episodes:', {
       totalFound: items.length,
       items
     });
@@ -182,7 +189,7 @@ export class HuluService extends BaseStreamingService {
   }
 
   protected getEpisodeInfo(episode: Element): Partial<QueueItem> {
-    console.log('Hulu: Getting episode info for element:', {
+    console.log('Prime: Getting episode info for element:', {
       elementId: episode.id,
       className: episode.className
     });
@@ -194,17 +201,21 @@ export class HuluService extends BaseStreamingService {
     const watchButton = episode.querySelector(this.selectors.watchButton) as HTMLAnchorElement;
     if (watchButton?.href) {
       info.url = new URL(watchButton.href, window.location.origin).href;
-      console.log('Hulu: Found episode URL:', info.url);
+      console.log('Prime: Found episode URL:', info.url);
     }
 
     // Get episode number
     const numberElement = episode.querySelector(this.selectors.episodeNumber);
     if (numberElement) {
       const numberText = numberElement.textContent?.trim() || '';
-      const episodeMatch = numberText.match(/episode (\d+)/i);
+      const episodeMatch = numberText.match(/S(\d+)\s*E(\d+)/i);
       if (episodeMatch) {
-        info.episodeNumber = parseInt(episodeMatch[1]);
-        console.log('Hulu: Extracted episode number:', info.episodeNumber);
+        info.seasonNumber = parseInt(episodeMatch[1]);
+        info.episodeNumber = parseInt(episodeMatch[2]);
+        console.log('Prime: Extracted episode numbers:', {
+          season: info.seasonNumber,
+          episode: info.episodeNumber
+        });
       }
     }
 
@@ -212,18 +223,18 @@ export class HuluService extends BaseStreamingService {
     const thumbnailElement = episode.querySelector(this.selectors.thumbnail) as HTMLImageElement;
     if (thumbnailElement?.src) {
       info.thumbnailUrl = thumbnailElement.src;
-      console.log('Hulu: Found thumbnail:', info.thumbnailUrl);
+      console.log('Prime: Found thumbnail:', info.thumbnailUrl);
     }
 
-    console.log('Hulu: Final episode info:', info);
+    console.log('Prime: Final episode info:', info);
     return info;
   }
 
   protected parseDuration(duration: string): number | undefined {
-    console.log('Hulu: Parsing duration:', duration);
-    // Hulu format: "1h 30m" or "30m"
+    console.log('Prime: Parsing duration:', duration);
+    // Prime format can be "1 h 1 min" or "58m"
     const hours = duration.match(/(\d+)\s*h/)?.[1];
-    const minutes = duration.match(/(\d+)\s*m/)?.[1];
+    const minutes = duration.match(/(\d+)\s*m(?:in)?/)?.[1];
     
     if (hours && minutes) {
       return parseInt(hours) * 3600 + parseInt(minutes) * 60;
@@ -244,14 +255,6 @@ export class HuluService extends BaseStreamingService {
       return !isNaN(percent) && percent >= 95;
     }
 
-    // Check for aria-valuenow
-    const progress = progressElement.getAttribute('aria-valuenow');
-    if (progress) {
-      const percent = parseInt(progress);
-      return !isNaN(percent) && percent >= 95;
-    }
-
-    // Check for completed class
-    return progressElement.classList.contains('completed');
+    return false;
   }
 } 

@@ -21,7 +21,10 @@
     "tabs",
     "activeTab",
     "scripting",
-    "alarms"
+    "alarms",
+    "*://*.primevideo.com/*",
+    "*://*.amazon.com/*/video/*",
+    "*://*.amazon.com/gp/video/*"
   ],
   "host_permissions": [
     "*://*.netflix.com/*",
@@ -29,7 +32,9 @@
     "*://*.disneyplus.com/*",
     "*://*.primevideo.com/*",
     "*://*.max.com/*",
-    "*://localhost:*/*"
+    "*://localhost:*/*",
+    "*://*.amazon.com/*/video/*",
+    "*://*.amazon.com/gp/video/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -42,6 +47,9 @@
         "*://*.youtube.com/*",
         "*://*.disneyplus.com/*",
         "*://*.primevideo.com/*",
+        "*://*.amazon.com/*/video/*",
+        "*://*.amazon.com/gp/video/*",
+        "*://*.hulu.com/*",
         "*://*.max.com/*"
       ],
       "js": ["content.js"]

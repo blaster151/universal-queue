@@ -34,7 +34,7 @@ export class MaxService extends BaseStreamingService {
       let attempts = 0;
       
       // Set up a MutationObserver to watch for changes
-      const observer = new MutationObserver((mutations) => {
+      const observer = new MutationObserver((_mutations) => {
         const hasEpisodesContainer = document.querySelector('div[aria-label="Episodes"]');
         const episodeCount = document.querySelectorAll(this.selectors.episodeItem).length;
         
@@ -111,9 +111,38 @@ export class MaxService extends BaseStreamingService {
       return !!hasEpisodesContainer && episodeCount > 0;
     },
     getSeriesData: async () => {
-      // Wait for content to load if needed
-      await this.waitForContent();
-      return this.getSeriesData();
+      const episodes = await this.getSeriesData();
+      const seriesId = window.location.pathname.split('/').pop() || 'unknown';
+      const title = document.title.split(' - ')[0] || 'Unknown Series';
+      const episodeCount = episodes.length;
+      const seriesThumbnailUrl = document.querySelector(this.selectors.episodeTitle)?.getAttribute('src') || '';
+      
+      // Ensure episodes are EpisodeItems with all required fields
+      const episodeItems = episodes
+        .filter(ep => ep.seasonNumber !== undefined && ep.episodeNumber !== undefined)
+        .map((ep, index) => ({
+          ...ep,
+          type: 'episode' as const,
+          seriesId,
+          seriesTitle: title,
+          seasonNumber: ep.seasonNumber!,
+          episodeNumber: ep.episodeNumber!,
+          seriesThumbnailUrl,
+          order: index
+        }));
+
+      return {
+        type: 'series' as const,
+        id: seriesId,
+        title,
+        service: 'max' as StreamingService,
+        episodes: episodeItems,
+        seasonNumber: 1,
+        episodeCount,
+        addedAt: Date.now(),
+        url: window.location.href,
+        thumbnailUrl: seriesThumbnailUrl
+      };
     },
     episodeInfo: {
       containerSelector: this.selectors.episodeContainer,

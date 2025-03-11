@@ -17,6 +17,7 @@ const services: Record<string, BaseStreamingService> = {
   'youtube.com': new YouTubeService(),
   'disneyplus.com': new DisneyPlusService(),
   'primevideo.com': new PrimeVideoService(),
+  'amazon.com': new PrimeVideoService(),
   'max.com': new MaxService(),
   'hulu.com': new HuluService(),
   'tv.apple.com': new AppleTVService()
@@ -172,19 +173,72 @@ export class ContentManager {
     });
   }
 
-  private async init(): Promise<void> {
-    console.log('ContentManager init starting...');
+  private detectService(): { domain: string; service: BaseStreamingService } | null {
     const hostname = window.location.hostname;
     const serviceDomain = Object.keys(this.services).find(domain => hostname.includes(domain));
     
-    console.log('ContentManager service detection:', {
-      hostname,
-      serviceDomain,
-      hasService: !!serviceDomain
+    if (!serviceDomain || !this.services[serviceDomain]) {
+      return null;
+    }
+
+    return {
+      domain: serviceDomain,
+      service: this.services[serviceDomain]
+    };
+  }
+
+  private async init(): Promise<void> {
+    const DEBUG_EMOJI = {
+      NO_SERVICE: '🚫',
+      SERVICE: '🎬'
+    } as const;
+
+    console.log('ContentManager initializing...', {
+      currentUrl: window.location.href,
+      availableServices: Object.keys(this.services),
+      matchingService: this.service?.getConfig().name
     });
 
-    if (serviceDomain) {
-      this.service = this.services[serviceDomain];
+    // Add debug overlay
+    const debugOverlay = document.createElement('div');
+    debugOverlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      background: rgba(0, 0, 0, 0.8);
+      color: #fff;
+      padding: 8px 16px;
+      font-family: monospace;
+      z-index: 999999;
+      font-size: 14px;
+      pointer-events: none;
+    `;
+    document.body.appendChild(debugOverlay);
+
+    const updateDebugInfo = async () => {
+      if (!this.service) {
+        debugOverlay.textContent = `${DEBUG_EMOJI.NO_SERVICE} No streaming service detected`;
+        return;
+      }
+
+      const serviceName = this.service.getConfig().name.toUpperCase();
+      const isSeries = await this.service.getConfig().isSeries();
+      const pageType = isSeries ? 'Series Page' : 'Movie/Other Page';
+      debugOverlay.textContent = `${DEBUG_EMOJI.SERVICE} ${serviceName}: ${serviceName} ${pageType}`;
+    };
+
+    console.log('ContentManager init starting...');
+    
+    // Update service detection to use the new type-safe method
+    const serviceDetection = this.detectService();
+    console.log('ContentManager service detection:', {
+      hostname: window.location.hostname,
+      serviceDomain: serviceDetection?.domain,
+      hasService: !!serviceDetection
+    });
+
+    if (serviceDetection) {
+      this.service = serviceDetection.service;
       const config = this.service.getConfig();
       const checkIsSeries = config.isSeries;
       
@@ -214,6 +268,9 @@ export class ContentManager {
         }
       }
     }
+
+    // Update debug info after service detection
+    await updateDebugInfo();
   }
 
   private async handleSeriesData(seriesData: any): Promise<void> {
@@ -296,6 +353,15 @@ export class ContentManager {
         `[class*="StyledTileWrapper"]`,
         `[class*="EpisodeTile"]`,
         `[class*="episode-tile"]`
+      ],
+      'primevideo': [
+        `[data-testid="episode-list-item"][data-aliases*="${episode.id}"]`,
+        `[data-testid="episode-list-item"]:has([data-testid="episodes-playbutton"][href*="${episode.id}"])`,
+        `[data-testid="episode-list-item"]`
+      ],
+      'hulu': [
+        `[data-testid="seh-tile"]:has([data-testid="watchaction-btn"][href*="${episode.id}"])`,
+        `[data-testid="seh-tile"]`
       ]
     };
 
@@ -312,7 +378,11 @@ export class ContentManager {
         // Disney+
         `[data-testid="set-item"]:has([data-testid="standard-regular-list-item-title"]:contains("${escapedTitle}"))`,
         // Max
-        `[class*="StyledTileWrapper"]:has([class*="StyledTitle"]:contains("${escapedTitle}"))`
+        `[class*="StyledTileWrapper"]:has([class*="StyledTitle"]:contains("${escapedTitle}"))`,
+        // Prime Video
+        `[data-testid="episode-list-item"]:has(.P1uAb6:contains("${escapedTitle}"))`,
+        // Hulu
+        `[data-testid="seh-tile"]:has([data-testid="seh-tile-content-title"]:contains("${escapedTitle}"))`
       );
     }
 
