@@ -1,4 +1,4 @@
-import { ServiceConfig, EpisodeItem } from '@/common/types';
+import { ServiceConfig, EpisodeItem, StreamingService } from '@/common/types';
 import { BaseStreamingService } from './base';
 
 export class DisneyPlusService extends BaseStreamingService {
@@ -16,56 +16,79 @@ export class DisneyPlusService extends BaseStreamingService {
   };
 
   protected readonly config: ServiceConfig = {
-    name: 'disneyplus',
+    name: 'disneyplus' as StreamingService,
     urlPattern: '*://*.disneyplus.com/*',
     titleSelector: '[data-testid="series-title"]',
-    thumbnailSelector: '[data-testid="series-hero-image"]',
-    durationSelector: '[data-testid="duration"]',
+    thumbnailSelector: '[data-testid="series-thumbnail"]',
+    durationSelector: '[data-testid="duration-text"]',
     completionDetector: {
       type: 'time',
       value: 'video.currentTime >= video.duration - 0.5'
     },
     isSeries: async () => {
-      const maxRetries = 3;
-      const retryDelay = 1000; // 1 second delay between retries
+      // Check for series-specific elements
+      const hasEpisodeList = document.querySelector('[data-testid="episode-list"]');
+      const hasSeasonSelector = document.querySelector('[data-testid="season-selector"]');
+      const hasEpisodeGrid = document.querySelector('[data-testid="episode-grid"]');
       
-      for (let attempt = 0; attempt < maxRetries; attempt++) {
-        console.log(`[DisneyPlusService] Checking if current page is a series (attempt ${attempt + 1}/${maxRetries})...`);
-        
-        const url = window.location.href;
-        console.log(`[DisneyPlusService] Current URL: ${url}`);
-        
-        const hasSeriesPattern = url.includes('/series/') || url.includes('/browse/entity-');
-        console.log(`[DisneyPlusService] URL contains series pattern: ${hasSeriesPattern}`);
-        
-        const episodeElements = document.querySelectorAll('[data-testid="set-item"]');
-        console.log(`[DisneyPlusService] Found episode elements: ${episodeElements.length}`);
-        
-        const seasonSelector = document.querySelector('[data-testid="dropdown-button"]');
-        console.log(`[DisneyPlusService] Found season selector: ${!!seasonSelector}`);
-        
-        const isSeries = hasSeriesPattern && (episodeElements.length > 0 || !!seasonSelector);
-        console.log(`[DisneyPlusService] Current isSeries determination: ${isSeries}`);
-        
-        if (isSeries) {
-          return true;
-        }
-        
-        if (attempt < maxRetries - 1) {
-          console.log(`[DisneyPlusService] Waiting ${retryDelay}ms before next attempt...`);
-          await new Promise(resolve => setTimeout(resolve, retryDelay));
-        }
-      }
+      console.log('Disney+: Series indicators:', {
+        hasEpisodeList: !!hasEpisodeList,
+        hasSeasonSelector: !!hasSeasonSelector,
+        hasEpisodeGrid: !!hasEpisodeGrid
+      });
+
+      return !!(hasEpisodeList || hasSeasonSelector || hasEpisodeGrid);
+    },
+    isMovie: async () => {
+      // Check for movie-specific elements with more flexible selectors
+      const hasMovieDetails = !!document.querySelector('[data-testid="details-container"], [data-testid="movie-details"], [class*="details-container"], [class*="MovieDetails"]');
+      const hasMovieMetadata = !!document.querySelector('[data-testid="metadata-container"], [data-testid="movie-metadata"], [class*="metadata-container"], [class*="MovieMetadata"]');
+      const hasMovieRating = !!document.querySelector('[data-testid="content-rating-score"], [data-testid="movie-rating"], [class*="content-rating"], [class*="Rating"]');
+      const hasMovieDuration = !!document.querySelector('[data-testid="runtime-metadata"], [data-testid="movie-duration"], [class*="runtime"], [class*="Duration"]');
+      const hasPlayButton = !!document.querySelector('[data-testid="play-button"], button[class*="play"], [class*="PlayButton"]');
+      const hasMovieTitle = !!document.querySelector('[data-testid="movie-title"], [class*="MovieTitle"]');
       
-      console.log('[DisneyPlusService] Final isSeries determination: false');
-      return false;
+      // Check URL pattern as well
+      const isMovieUrl = window.location.pathname.includes('/movie/') || window.location.pathname.includes('/movies/');
+      
+      console.log('Disney+: Movie indicators:', {
+        hasMovieDetails,
+        hasMovieMetadata,
+        hasMovieRating,
+        hasMovieDuration,
+        hasPlayButton,
+        hasMovieTitle,
+        isMovieUrl
+      });
+
+      // More flexible conditions: any two indicators or play button with any other indicator
+      const indicators = [hasMovieDetails, hasMovieMetadata, hasMovieRating, hasMovieDuration, hasMovieTitle];
+      const hasMultipleIndicators = indicators.filter(Boolean).length >= 2;
+      const hasPlayWithIndicator = hasPlayButton && indicators.some(Boolean);
+
+      // Don't check for series indicators, as some movies might be part of collections
+      return isMovieUrl || hasPlayWithIndicator || hasMultipleIndicators;
+    },
+    isList: async () => {
+      // Check for list/browse page indicators
+      const hasBrowseGrid = document.querySelector('[data-testid="browse-grid"]');
+      const hasCollectionGrid = document.querySelector('[data-testid="collection-grid"]');
+      const isCollectionUrl = window.location.pathname.includes('/collection/');
+
+      console.log('Disney+: List indicators:', {
+        hasBrowseGrid: !!hasBrowseGrid,
+        hasCollectionGrid: !!hasCollectionGrid,
+        isCollectionUrl
+      });
+
+      return !!(hasBrowseGrid || hasCollectionGrid || isCollectionUrl);
     },
     episodeInfo: {
-      containerSelector: '[data-testid="episode-container"]',
+      containerSelector: '[data-testid="episode-list"]',
       titleSelector: '[data-testid="episode-title"]',
       numberSelector: '[data-testid="episode-number"]',
       synopsisSelector: '[data-testid="episode-synopsis"]',
-      durationSelector: '[data-testid="episode-duration"]',
+      durationSelector: '[data-testid="duration-text"]',
       progressSelector: '[data-testid="progress-indicator"]'
     },
     features: {

@@ -20,27 +20,75 @@ export class PrimeVideoService extends BaseStreamingService {
     urlPattern: '*://*.amazon.com/*/video/*, *://*.amazon.com/gp/video/detail/*',
     titleSelector: '.P1uAb6',
     thumbnailSelector: 'img.FHb5CR',
-    durationSelector: '[data-testid="episode-runtime"]',
+    durationSelector: '.duration-text',
     completionDetector: {
       type: 'time',
       value: 'video.currentTime >= video.duration - 0.5'
     },
     isSeries: async () => {
-      // First check if we're on a video detail page
-      if (!window.location.pathname.includes('/video/detail/')) {
-        console.log('Prime: Not a video detail page');
+      // Check for series-specific elements
+      const hasEpisodeList = document.querySelector('[data-automation-id="episodes-list"]');
+      const hasSeasonSelector = document.querySelector('[data-automation-id="season-selector"]');
+      const hasEpisodeGrid = document.querySelector('[data-automation-id="episode-grid"]');
+      
+      console.log('Prime Video: Series indicators:', {
+        hasEpisodeList: !!hasEpisodeList,
+        hasSeasonSelector: !!hasSeasonSelector,
+        hasEpisodeGrid: !!hasEpisodeGrid
+      });
+
+      return !!(hasEpisodeList || hasSeasonSelector || hasEpisodeGrid);
+    },
+    isMovie: async () => {
+      // First check if it's a series - if so, it's not a movie
+      const isSeries = await this.config.isSeries();
+      if (isSeries) {
+        console.log('Prime Video: Page is a series, not a movie');
         return false;
       }
 
-      // Check for episode items
-      const episodeCount = document.querySelectorAll(this.selectors.episodeItem).length;
-      console.log('Prime: Found episode items:', episodeCount);
+      // Check for movie-specific elements with more specific selectors
+      const hasMovieDetails = !!document.querySelector('[data-automation-id="movie-details"], [class*="dv-node-dp-movie"]');
+      const hasMovieMetadata = !!document.querySelector('[data-automation-id="movie-meta-data"], [class*="dv-dp-node-meta-info"]');
+      const hasMovieRating = !!document.querySelector('[data-automation-id="content-rating"], [class*="av-badge-display"]');
+      const hasMovieDuration = !!document.querySelector('[data-automation-id="runtime"], [class*="dv-dp-node-runtime"]');
+      const hasPlayButton = !!document.querySelector('[data-automation-id="play-button"], [class*="dv-playback-button"]');
+      const hasMovieTitle = !!document.querySelector('[data-automation-id="movie-title"], [class*="dv-node-dp-title"]');
+      
+      // Check URL pattern as well
+      const isMovieUrl = window.location.pathname.includes('/detail/') || window.location.pathname.includes('/dp/');
+      
+      console.log('Prime Video: Movie indicators:', {
+        hasMovieDetails,
+        hasMovieMetadata,
+        hasMovieRating,
+        hasMovieDuration,
+        hasPlayButton,
+        hasMovieTitle,
+        isMovieUrl
+      });
 
-      // Check for the episodes container
-      const hasEpisodesContainer = document.querySelector(this.selectors.episodeContainer);
-      console.log('Prime: Has episodes container:', !!hasEpisodesContainer);
+      // More specific conditions: need multiple movie indicators or URL + play button
+      const indicators = [hasMovieDetails, hasMovieMetadata, hasMovieRating, hasMovieDuration, hasMovieTitle];
+      const hasMultipleIndicators = indicators.filter(Boolean).length >= 2;
+      const hasPlayWithUrl = isMovieUrl && hasPlayButton;
 
-      return !!hasEpisodesContainer && episodeCount > 0;
+      return hasPlayWithUrl || hasMultipleIndicators;
+    },
+    isList: async () => {
+      // Check for list/browse page indicators
+      const hasBrowseGrid = document.querySelector('[data-automation-id="browse-grid"]');
+      const hasCollectionGrid = document.querySelector('[data-automation-id="collection-grid"]');
+      const isCollectionUrl = window.location.pathname.includes('/browse/') || 
+                             window.location.pathname.includes('/storefront/');
+
+      console.log('Prime Video: List indicators:', {
+        hasBrowseGrid: !!hasBrowseGrid,
+        hasCollectionGrid: !!hasCollectionGrid,
+        isCollectionUrl
+      });
+
+      return !!(hasBrowseGrid || hasCollectionGrid || isCollectionUrl);
     },
     getSeriesData: async () => {
       const episodes = await this.getSeriesData();
@@ -77,12 +125,12 @@ export class PrimeVideoService extends BaseStreamingService {
       };
     },
     episodeInfo: {
-      containerSelector: this.selectors.episodeContainer,
-      titleSelector: this.selectors.episodeTitle,
-      numberSelector: this.selectors.episodeNumber,
-      synopsisSelector: this.selectors.episodeDescription,
-      durationSelector: this.selectors.duration,
-      progressSelector: this.selectors.progressBar
+      containerSelector: '[data-automation-id="episodes-list"]',
+      titleSelector: '[data-automation-id="episode-title"]',
+      numberSelector: '[data-automation-id="episode-number"]',
+      synopsisSelector: '[data-automation-id="episode-synopsis"]',
+      durationSelector: '[data-automation-id="duration-text"]',
+      progressSelector: '[data-automation-id="progress-indicator"]'
     }
   };
 

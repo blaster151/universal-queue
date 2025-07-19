@@ -18,29 +18,68 @@ export class HuluService extends BaseStreamingService {
   protected readonly config: ServiceConfig = {
     name: 'hulu' as StreamingService,
     urlPattern: '*://*.hulu.com/*',
-    titleSelector: '[data-testid="seh-tile-content-title"]',
-    thumbnailSelector: '[data-testid="image"]',
-    durationSelector: '', // Hulu doesn't show duration on series pages
+    titleSelector: '[data-testid="details-title"]',
+    thumbnailSelector: '[data-testid="content-lockup-img"]',
+    durationSelector: '[data-testid="duration-text"]',
     completionDetector: {
       type: 'time',
       value: 'video.currentTime >= video.duration - 0.5'
     },
     isSeries: async () => {
-      // First check if we're on a series page
-      if (!window.location.pathname.includes('/series/')) {
-        console.log('Hulu: Not a series page');
-        return false;
-      }
+      // Check for series-specific elements with more flexible selectors
+      const hasEpisodeList = !!document.querySelector('[data-testid="seh-episodes-list"], [class*="episode-list"], [class*="EpisodeList"]');
+      const hasSeasonSelector = !!document.querySelector('[data-testid="season-selector"], [class*="season-selector"], [class*="SeasonSelector"]');
+      const hasEpisodeGrid = !!document.querySelector('[data-testid="episode-grid"], [class*="episode-grid"], [class*="EpisodeGrid"]');
+      const hasSeasonPicker = !!document.querySelector('[class*="season-picker"], [class*="SeasonPicker"]');
+      const hasEpisodeContainer = !!document.querySelector('[data-testid="visible-collection-impression"], [class*="episode-container"]');
+      
+      // Check URL pattern as well
+      const isSeriesUrl = window.location.pathname.includes('/series/');
+      
+      console.log('Hulu: Series indicators:', {
+        hasEpisodeList,
+        hasSeasonSelector,
+        hasEpisodeGrid,
+        hasSeasonPicker,
+        hasEpisodeContainer,
+        isSeriesUrl
+      });
 
-      // Check for episode items
-      const episodeCount = document.querySelectorAll(this.selectors.episodeItem).length;
-      console.log('Hulu: Found episode items:', episodeCount);
+      // More flexible condition: URL match or any series indicator
+      return isSeriesUrl || hasEpisodeList || hasSeasonSelector || hasEpisodeGrid || hasSeasonPicker || hasEpisodeContainer;
+    },
+    isMovie: async () => {
+      // Check for movie-specific elements
+      const hasMovieDetails = document.querySelector('[data-testid="movie-details"]');
+      const hasMovieMetadata = document.querySelector('[data-testid="movie-meta-data"]');
+      const hasPlayButton = document.querySelector('[data-testid="play-button"]');
+      
+      // Make sure we don't have series elements
+      const hasSeriesElements = document.querySelector('[data-testid="seh-episodes-list"], [data-testid="season-selector"], [data-testid="episode-grid"]');
 
-      // Check for the episodes container
-      const hasEpisodesContainer = document.querySelector(this.selectors.episodeContainer);
-      console.log('Hulu: Has episodes container:', !!hasEpisodesContainer);
+      console.log('Hulu: Movie indicators:', {
+        hasMovieDetails: !!hasMovieDetails,
+        hasMovieMetadata: !!hasMovieMetadata,
+        hasPlayButton: !!hasPlayButton,
+        hasSeriesElements: !!hasSeriesElements
+      });
 
-      return !!hasEpisodesContainer && episodeCount > 0;
+      return !hasSeriesElements && !!(hasMovieDetails || hasMovieMetadata || hasPlayButton);
+    },
+    isList: async () => {
+      // Check for list/browse page indicators
+      const hasBrowseGrid = document.querySelector('[data-testid="browse-grid"]');
+      const hasCollectionGrid = document.querySelector('[data-testid="collection-grid"]');
+      const isCollectionUrl = window.location.pathname.includes('/collection/') || 
+                             window.location.pathname.includes('/browse/');
+
+      console.log('Hulu: List indicators:', {
+        hasBrowseGrid: !!hasBrowseGrid,
+        hasCollectionGrid: !!hasCollectionGrid,
+        isCollectionUrl
+      });
+
+      return !!(hasBrowseGrid || hasCollectionGrid || isCollectionUrl);
     },
     getSeriesData: async () => {
       const episodes = await this.getSeriesData();
@@ -77,12 +116,12 @@ export class HuluService extends BaseStreamingService {
       };
     },
     episodeInfo: {
-      containerSelector: this.selectors.episodeContainer,
-      titleSelector: this.selectors.episodeTitle,
-      numberSelector: this.selectors.episodeNumber,
-      synopsisSelector: this.selectors.episodeDescription,
-      durationSelector: '',
-      progressSelector: ''
+      containerSelector: '[data-testid="seh-episodes-list"]',
+      titleSelector: '[data-testid="seh-tile-content-title"]',
+      numberSelector: '[data-testid="episode-number"]',
+      synopsisSelector: '[data-testid="seh-tile-content-description"]',
+      durationSelector: '[data-testid="duration-text"]',
+      progressSelector: '[data-testid="progress-indicator"]'
     }
   };
 

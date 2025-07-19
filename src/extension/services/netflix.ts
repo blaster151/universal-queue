@@ -1,4 +1,4 @@
-import { ServiceConfig } from '@/common/types';
+import { StreamingService, ServiceConfig } from '@/common/types';
 import { BaseStreamingService } from './base';
 
 export class NetflixService extends BaseStreamingService {
@@ -258,39 +258,93 @@ export class NetflixService extends BaseStreamingService {
   public getConfig(): ServiceConfig {
     console.log('NetflixService: Getting config');
     return {
-      name: 'netflix',
+      name: 'netflix' as StreamingService,
       urlPattern: '*://*.netflix.com/*',
-      titleSelector: this.SELECTORS.series.title,
-      thumbnailSelector: this.SELECTORS.series.thumbnail,
-      durationSelector: this.SELECTORS.series.episodeDuration,
+      titleSelector: '[data-uia="video-title"]',
+      thumbnailSelector: 'img.previewModal--boxart',
+      durationSelector: '.duration',
       completionDetector: {
-        type: 'event',
-        value: 'video.ended'
+        type: 'time',
+        value: 'video.currentTime >= video.duration - 0.5'
       },
-      isSeries: () => {
-        console.log('NetflixService: Checking if series');
+      isSeries: async () => {
+        // Check for series-specific elements using the comprehensive SELECTORS
+        const hasEpisodeList = !!document.querySelector(this.SELECTORS.series.container);
+        const hasSeasonSelector = !!document.querySelector(this.SELECTORS.series.expandButton);
+        const hasEpisodeContainer = !!document.querySelector('.episodeSelector-episodes-container');
+        const hasShowMoreButton = !!document.querySelector(this.SELECTORS.series.showMoreButton);
+        const hasEpisodeItems = !!document.querySelectorAll(this.SELECTORS.series.episodeItem).length;
+        const hasSeasonInfo = !!document.querySelector(this.SELECTORS.series.seasonInfo);
         
-        // Check for any series indicators
-        const hasSeriesIndicator = document.querySelector(this.SELECTORS.series.seriesIndicators) !== null;
+        // Check URL pattern as well
+        const isSeriesUrl = window.location.pathname.includes('/watch/') && 
+                           (hasEpisodeItems || hasEpisodeContainer || hasShowMoreButton);
         
-        // Check URL for series indicators
-        const isSeriesUrl = window.location.pathname.includes('/tv/') || 
-                          window.location.pathname.includes('/series/') ||
-                          window.location.pathname.includes('/shows/');
-        
-        // Check genres for TV Show indicators
-        const genres = Array.from(document.querySelectorAll('[data-uia="previewModal--tags-genre"] a'))
-          .map(a => a.textContent?.toLowerCase() || '');
-        const hasTvGenre = genres.some(g => g.includes('tv') || g.includes('series') || g.includes('shows'));
-        
-        const isSeries = hasSeriesIndicator || isSeriesUrl || hasTvGenre;
-        console.log('NetflixService: Is series?', isSeries, {
-          hasSeriesIndicator,
-          isSeriesUrl,
-          hasTvGenre,
-          genres
+        console.log('Netflix: Series indicators:', {
+          hasEpisodeList,
+          hasSeasonSelector,
+          hasEpisodeContainer,
+          hasShowMoreButton,
+          hasEpisodeItems,
+          hasSeasonInfo,
+          isSeriesUrl
         });
-        return isSeries;
+
+        // Need multiple indicators to confirm it's a series
+        const indicators = [hasEpisodeList, hasSeasonSelector, hasEpisodeContainer, hasShowMoreButton, hasEpisodeItems, hasSeasonInfo];
+        const hasMultipleIndicators = indicators.filter(Boolean).length >= 2;
+
+        return hasMultipleIndicators || isSeriesUrl;
+      },
+      isMovie: async () => {
+        // First check if it's a series - if so, it's not a movie
+        const isSeries = await this.config.isSeries();
+        if (isSeries) {
+          console.log('Netflix: Page is a series, not a movie');
+          return false;
+        }
+
+        // Check for movie-specific elements with more flexible selectors
+        const hasMovieDetails = !!document.querySelector('.previewModal--detailsMetadata-left, .title-info-metadata, [class*="details-metadata"], [class*="titleMetadata"]');
+        const hasMovieMetadata = !!document.querySelector('.previewModal--metadataContent, .title-metadata, [class*="metadata-content"], [class*="metadataContent"]');
+        const hasMovieRating = !!document.querySelector('.previewModal--metadataDetails, .title-info-metadata-item, [class*="maturity-rating"], [class*="maturityRating"]');
+        const hasMovieDuration = !!document.querySelector('[class*="duration"], [class*="runtime"], [class*="player-title-evidence"]');
+        const hasPlayButton = !!document.querySelector('[class*="watch-now"], [class*="play-button"], [class*="PlayButton"]');
+        const hasMovieTitle = !!document.querySelector('[class*="title-title"], [class*="playerTitle"]');
+        
+        // Check URL pattern as well
+        const isMovieUrl = window.location.pathname.includes('/watch/') || window.location.pathname.includes('/title/') || window.location.pathname.includes('/movies/');
+        
+        console.log('Netflix: Movie indicators:', {
+          hasMovieDetails,
+          hasMovieMetadata,
+          hasMovieRating,
+          hasMovieDuration,
+          hasPlayButton,
+          hasMovieTitle,
+          isMovieUrl
+        });
+
+        // If we have a play button and duration, or any two other indicators, it's likely a movie
+        const indicators = [hasMovieDetails, hasMovieMetadata, hasMovieRating, hasMovieDuration, hasMovieTitle];
+        const hasMultipleIndicators = indicators.filter(Boolean).length >= 2;
+        const hasPlayAndDuration = hasPlayButton && hasMovieDuration;
+
+        return isMovieUrl || hasPlayAndDuration || hasMultipleIndicators;
+      },
+      isList: async () => {
+        // Check for list/browse page indicators
+        const hasListView = document.querySelector('[data-uia="browse-list"]');
+        const hasGridView = document.querySelector('[data-uia="browse-grid"]');
+        const isListUrl = window.location.pathname.includes('/browse/') || window.location.pathname.includes('/latest/');
+
+        console.log('Netflix: List indicators:', {
+          hasListView: !!hasListView,
+          hasGridView: !!hasGridView,
+          isListUrl
+        });
+
+        return !!(hasListView || hasGridView || isListUrl);
       },
       episodeInfo: {
         containerSelector: this.SELECTORS.series.container,
@@ -389,18 +443,93 @@ export class NetflixService extends BaseStreamingService {
   }
 
   protected readonly config: ServiceConfig = {
-    name: 'netflix',
+    name: 'netflix' as StreamingService,
     urlPattern: '*://*.netflix.com/*',
-    titleSelector: this.SELECTORS.series.title,
-    thumbnailSelector: this.SELECTORS.series.thumbnail,
-    durationSelector: this.SELECTORS.series.episodeDuration,
+    titleSelector: '[data-uia="video-title"]',
+    thumbnailSelector: 'img.previewModal--boxart',
+    durationSelector: '.duration',
     completionDetector: {
-      type: 'event',
-      value: 'video.ended'
+      type: 'time',
+      value: 'video.currentTime >= video.duration - 0.5'
     },
-    isSeries: () => {
-      const url = window.location.href;
-      return url.includes('/browse') || url.includes('/title/');
+    isSeries: async () => {
+      // Check for series-specific elements using the comprehensive SELECTORS
+      const hasEpisodeList = !!document.querySelector(this.SELECTORS.series.container);
+      const hasSeasonSelector = !!document.querySelector(this.SELECTORS.series.expandButton);
+      const hasEpisodeContainer = !!document.querySelector('.episodeSelector-episodes-container');
+      const hasShowMoreButton = !!document.querySelector(this.SELECTORS.series.showMoreButton);
+      const hasEpisodeItems = !!document.querySelectorAll(this.SELECTORS.series.episodeItem).length;
+      const hasSeasonInfo = !!document.querySelector(this.SELECTORS.series.seasonInfo);
+      
+      // Check URL pattern as well
+      const isSeriesUrl = window.location.pathname.includes('/watch/') && 
+                         (hasEpisodeItems || hasEpisodeContainer || hasShowMoreButton);
+      
+      console.log('Netflix: Series indicators:', {
+        hasEpisodeList,
+        hasSeasonSelector,
+        hasEpisodeContainer,
+        hasShowMoreButton,
+        hasEpisodeItems,
+        hasSeasonInfo,
+        isSeriesUrl
+      });
+
+      // Need multiple indicators to confirm it's a series
+      const indicators = [hasEpisodeList, hasSeasonSelector, hasEpisodeContainer, hasShowMoreButton, hasEpisodeItems, hasSeasonInfo];
+      const hasMultipleIndicators = indicators.filter(Boolean).length >= 2;
+
+      return hasMultipleIndicators || isSeriesUrl;
+    },
+    isMovie: async () => {
+      // First check if it's a series - if so, it's not a movie
+      const isSeries = await this.config.isSeries();
+      if (isSeries) {
+        console.log('Netflix: Page is a series, not a movie');
+        return false;
+      }
+
+      // Check for movie-specific elements with more flexible selectors
+      const hasMovieDetails = !!document.querySelector('.previewModal--detailsMetadata-left, .title-info-metadata, [class*="details-metadata"], [class*="titleMetadata"]');
+      const hasMovieMetadata = !!document.querySelector('.previewModal--metadataContent, .title-metadata, [class*="metadata-content"], [class*="metadataContent"]');
+      const hasMovieRating = !!document.querySelector('.previewModal--metadataDetails, .title-info-metadata-item, [class*="maturity-rating"], [class*="maturityRating"]');
+      const hasMovieDuration = !!document.querySelector('[class*="duration"], [class*="runtime"], [class*="player-title-evidence"]');
+      const hasPlayButton = !!document.querySelector('[class*="watch-now"], [class*="play-button"], [class*="PlayButton"]');
+      const hasMovieTitle = !!document.querySelector('[class*="title-title"], [class*="playerTitle"]');
+      
+      // Check URL pattern as well
+      const isMovieUrl = window.location.pathname.includes('/watch/') || window.location.pathname.includes('/title/') || window.location.pathname.includes('/movies/');
+      
+      console.log('Netflix: Movie indicators:', {
+        hasMovieDetails,
+        hasMovieMetadata,
+        hasMovieRating,
+        hasMovieDuration,
+        hasPlayButton,
+        hasMovieTitle,
+        isMovieUrl
+      });
+
+      // If we have a play button and duration, or any two other indicators, it's likely a movie
+      const indicators = [hasMovieDetails, hasMovieMetadata, hasMovieRating, hasMovieDuration, hasMovieTitle];
+      const hasMultipleIndicators = indicators.filter(Boolean).length >= 2;
+      const hasPlayAndDuration = hasPlayButton && hasMovieDuration;
+
+      return isMovieUrl || hasPlayAndDuration || hasMultipleIndicators;
+    },
+    isList: async () => {
+      // Check for list/browse page indicators
+      const hasListView = document.querySelector('[data-uia="browse-list"]');
+      const hasGridView = document.querySelector('[data-uia="browse-grid"]');
+      const isListUrl = window.location.pathname.includes('/browse/') || window.location.pathname.includes('/latest/');
+
+      console.log('Netflix: List indicators:', {
+        hasListView: !!hasListView,
+        hasGridView: !!hasGridView,
+        isListUrl
+      });
+
+      return !!(hasListView || hasGridView || isListUrl);
     },
     episodeInfo: {
       containerSelector: this.SELECTORS.series.container,

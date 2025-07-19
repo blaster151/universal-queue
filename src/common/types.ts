@@ -49,9 +49,11 @@ export interface ServiceConfig {
   durationSelector: string;
   completionDetector: CompletionDetector;
   isSeries: () => boolean | Promise<boolean>;
-  episodeInfo: EpisodeSelectors;
-  features?: ServiceFeatures;
+  isMovie?: () => boolean | Promise<boolean>;
+  isList?: () => boolean | Promise<boolean>;
   getSeriesData?: () => Promise<SeriesData>;
+  episodeInfo?: EpisodeSelectors;
+  features?: ServiceFeatures;
 }
 
 export interface EpisodeSelectors {

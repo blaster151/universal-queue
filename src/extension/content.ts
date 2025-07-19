@@ -187,6 +187,20 @@ export class ContentManager {
     };
   }
 
+  private async getPageType(): Promise<string> {
+    if (!this.service) return 'Unknown Page';
+    
+    const config = this.service.getConfig();
+    const isSeries = await config.isSeries();
+    const isMovie = await config.isMovie?.() || false;
+    const isList = await config.isList?.() || false;
+
+    if (isSeries) return 'Series Page';
+    if (isMovie) return 'Movie Page';
+    if (isList) return 'List Page';
+    return 'Other Page';
+  }
+
   private async init(): Promise<void> {
     const DEBUG_EMOJI = {
       NO_SERVICE: '🚫',
@@ -222,9 +236,8 @@ export class ContentManager {
       }
 
       const serviceName = this.service.getConfig().name.toUpperCase();
-      const isSeries = await this.service.getConfig().isSeries();
-      const pageType = isSeries ? 'Series Page' : 'Movie/Other Page';
-      debugOverlay.textContent = `${DEBUG_EMOJI.SERVICE} ${serviceName}: ${serviceName} ${pageType}`;
+      const pageType = await this.getPageType();
+      debugOverlay.textContent = `${DEBUG_EMOJI.SERVICE} ${serviceName}: ${pageType}`;
     };
 
     console.log('ContentManager init starting...');

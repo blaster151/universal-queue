@@ -19,96 +19,68 @@ export class MaxService extends BaseStreamingService {
     }
   };
 
-  readonly selectors = {
+  private readonly selectors = {
     episodeItem: '.StyledTileLinkNormal-Fuse-Web-Play__sc-1ramr47-33[href*="/video/watch/"]',
     episodeContainer: 'div[aria-label="Episodes"] #tileList',
-    buttonContainer: '.uq-button-container',
-    episodeTitle: '.StyledPrimaryTitle-Fuse-Web-Play__sc-1ramr47-25',
-    episodeNumber: '.StyledPrimaryTitle-Fuse-Web-Play__sc-1ramr47-25'
+    buttonContainer: '.StyledTileWrapper-Fuse-Web-Play__sc-1ramr47-31',
+    episodeTitle: '[class*="StyledTitle"]',
+    episodeNumber: '[class*="EpisodeNumber"]'
   };
-
-  private async waitForContent(maxAttempts: number = 20): Promise<boolean> {
-    console.log('Max: Waiting for content to load...');
-    
-    return new Promise((resolve) => {
-      let attempts = 0;
-      
-      // Set up a MutationObserver to watch for changes
-      const observer = new MutationObserver((_mutations) => {
-        const hasEpisodesContainer = document.querySelector('div[aria-label="Episodes"]');
-        const episodeCount = document.querySelectorAll(this.selectors.episodeItem).length;
-        
-        console.log('Max: Content check:', {
-          attempt: attempts + 1,
-          hasEpisodesContainer: !!hasEpisodesContainer,
-          episodeCount
-        });
-        
-        if (hasEpisodesContainer && episodeCount > 0) {
-          observer.disconnect();
-          console.log('Max: Content loaded successfully');
-          resolve(true);
-          return;
-        }
-        
-        attempts++;
-        if (attempts >= maxAttempts) {
-          observer.disconnect();
-          console.log('Max: Content failed to load after', maxAttempts, 'attempts');
-          resolve(false);
-        }
-      });
-      
-      // Start observing
-      observer.observe(document.body, {
-        childList: true,
-        subtree: true
-      });
-      
-      // Also check immediately
-      const hasEpisodesContainer = document.querySelector('div[aria-label="Episodes"]');
-      const episodeCount = document.querySelectorAll(this.selectors.episodeItem).length;
-      if (hasEpisodesContainer && episodeCount > 0) {
-        observer.disconnect();
-        console.log('Max: Content already loaded');
-        resolve(true);
-      }
-    });
-  }
 
   protected readonly config: ServiceConfig = {
     name: 'max' as StreamingService,
     urlPattern: '*://*.max.com/*',
-    titleSelector: '.StyledPrimaryTitle-Fuse-Web-Play__sc-1ramr47-25',
-    thumbnailSelector: 'img',
-    durationSelector: '.StyledMetadataContents-Fuse-Web-Play__sc-1k6k9dt-1',
+    titleSelector: '[data-testid="content-title"]',
+    thumbnailSelector: '[data-testid="content-thumbnail"]',
+    durationSelector: '[data-testid="duration-text"]',
     completionDetector: {
       type: 'time',
       value: 'video.currentTime >= video.duration - 0.5'
     },
     isSeries: async () => {
-      // First check if we're on a show page
-      if (!window.location.pathname.includes('/show/')) {
-        console.log('Max: Not a show page');
-        return false;
-      }
+      // Check for series-specific elements
+      const hasEpisodeList = document.querySelector('div[aria-label="Episodes"]');
+      const hasSeasonSelector = document.querySelector('[data-testid="season-selector"]');
+      const hasEpisodeGrid = document.querySelector('#tileList');
+      
+      console.log('Max: Series indicators:', {
+        hasEpisodeList: !!hasEpisodeList,
+        hasSeasonSelector: !!hasSeasonSelector,
+        hasEpisodeGrid: !!hasEpisodeGrid
+      });
 
-      // Wait for content to load
-      const contentLoaded = await this.waitForContent();
-      if (!contentLoaded) {
-        console.log('Max: Content failed to load');
-        return false;
-      }
+      return !!(hasEpisodeList || hasSeasonSelector || hasEpisodeGrid);
+    },
+    isMovie: async () => {
+      // Check for movie-specific elements and URL pattern
+      const isMovieUrl = window.location.pathname.includes('/movie/') || window.location.pathname.includes('/watch/');
+      const hasMovieDetails = document.querySelector('[class*="MovieDetails"], [class*="movie-details"]');
+      const hasMovieMetadata = document.querySelector('[class*="MovieMetadata"], [class*="movie-metadata"]');
+      const hasMovieTitle = document.querySelector('[class*="MovieTitle"], [class*="movie-title"]');
+      
+      console.log('Max: Movie indicators:', {
+        isMovieUrl,
+        hasMovieDetails: !!hasMovieDetails,
+        hasMovieMetadata: !!hasMovieMetadata,
+        hasMovieTitle: !!hasMovieTitle
+      });
 
-      // Check for episode items
-      const episodeCount = document.querySelectorAll(this.selectors.episodeItem).length;
-      console.log('Max: Found episode items:', episodeCount);
+      return isMovieUrl || !!(hasMovieDetails || hasMovieMetadata || hasMovieTitle);
+    },
+    isList: async () => {
+      // Check for list/browse page indicators
+      const hasBrowseGrid = document.querySelector('[data-testid="browse-grid"]');
+      const hasCollectionGrid = document.querySelector('[data-testid="collection-grid"]');
+      const isCollectionUrl = window.location.pathname.includes('/collection/') || 
+                             window.location.pathname.includes('/browse/');
 
-      // Check for the episodes container
-      const hasEpisodesContainer = document.querySelector('div[aria-label="Episodes"]');
-      console.log('Max: Has episodes container:', !!hasEpisodesContainer);
+      console.log('Max: List indicators:', {
+        hasBrowseGrid: !!hasBrowseGrid,
+        hasCollectionGrid: !!hasCollectionGrid,
+        isCollectionUrl
+      });
 
-      return !!hasEpisodesContainer && episodeCount > 0;
+      return !!(hasBrowseGrid || hasCollectionGrid || isCollectionUrl);
     },
     getSeriesData: async () => {
       const episodes = await this.getSeriesData();
@@ -145,12 +117,12 @@ export class MaxService extends BaseStreamingService {
       };
     },
     episodeInfo: {
-      containerSelector: this.selectors.episodeContainer,
-      titleSelector: this.selectors.episodeTitle,
-      numberSelector: this.selectors.episodeNumber,
-      synopsisSelector: '.StyledDescription-Fuse-Web-Play__sc-1ramr47-28',
-      durationSelector: '.StyledMetadataContents-Fuse-Web-Play__sc-1k6k9dt-1',
-      progressSelector: '[class*="progress"]'
+      containerSelector: 'div[aria-label="Episodes"] #tileList',
+      titleSelector: '[class*="StyledTitle"]',
+      numberSelector: '[class*="EpisodeNumber"]',
+      synopsisSelector: '[class*="Synopsis"]',
+      durationSelector: '[class*="Duration"]',
+      progressSelector: '[class*="Progress"]'
     }
   };
 
